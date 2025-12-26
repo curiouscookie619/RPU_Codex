@@ -8,7 +8,3 @@ pydantic==2.8.2
 python-dotenv==1.0.1
 weasyprint==61.2
 pydyf==0.9.0
-weasyprint==61.2
-pydyf==0.9.0
-weasyprint==62.3
-weasyprint==62.3
