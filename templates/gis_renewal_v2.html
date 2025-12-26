@@ -109,8 +109,8 @@
 
     /* 3 cards */
     .grid-3{
-      display:grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      display:flex;
+      flex-wrap:wrap;
       gap: 10px;
       margin-bottom: 10px;
     }
@@ -124,6 +124,9 @@
       position: relative;
       overflow:hidden;
       min-height: 176px;
+      flex: 1 1 calc(33.333% - 8px);
+      min-width: 230px;
+      background: #fff;
     }
 
     .card h2{
@@ -157,20 +160,25 @@
       margin: 6px 0 2px;
     }
 
-    /* Auras */
-    .aura{
-      position:absolute;
-      inset:-40px -60px auto auto;
-      width: 140px;
-      height: 140px;
-      border-radius: 50%;
-      filter: blur(24px);
-      opacity: 0.35;
-      pointer-events:none;
+    /* Aura-like backgrounds (supported by WeasyPrint better than filter+blur) */
+    .card-rpu{
+      background:
+        radial-gradient(circle at 85% 20%, rgba(37,99,235,0.18), transparent 45%),
+        radial-gradient(circle at 10% 75%, rgba(37,99,235,0.12), transparent 55%),
+        #ffffff;
     }
-    .aura.green{ background: var(--aura-green); }
-    .aura.blue{ background: var(--aura-blue); }
-    .aura.red{ background: var(--aura-red); }
+    .card-fp{
+      background:
+        radial-gradient(circle at 85% 20%, rgba(22,163,74,0.18), transparent 45%),
+        radial-gradient(circle at 10% 75%, rgba(22,163,74,0.12), transparent 55%),
+        #ffffff;
+    }
+    .card-surrender{
+      background:
+        radial-gradient(circle at 85% 20%, rgba(239,68,68,0.18), transparent 45%),
+        radial-gradient(circle at 10% 75%, rgba(239,68,68,0.12), transparent 55%),
+        #ffffff;
+    }
 
     .tag{
       display:inline-block;
@@ -288,7 +296,10 @@
       .sheet{ width: auto; padding: 14px; }
       .top-strip{ grid-template-columns: 1fr; }
       .strip-right{ justify-content:flex-start; flex-wrap:wrap; }
-      .grid-3, .grid-3b{ grid-template-columns: 1fr; }
+      .grid-3{
+        flex-direction: column;
+      }
+      .grid-3b{ grid-template-columns: 1fr; }
     }
 
     /* Print */
@@ -353,8 +364,7 @@
   <section class="grid-3">
 
     <!-- RPU -->
-    <article class="card">
-      <div class="aura blue"></div>
+    <article class="card card-rpu">
       <span class="tag blue">Reduced Paid-Up</span>
       <h2>If you shift to Reduced Paid-Up</h2>
 
@@ -376,8 +386,7 @@
     </article>
 
     <!-- FP -->
-    <article class="card">
-      <div class="aura green"></div>
+    <article class="card card-fp">
       <span class="tag green">Continue premium-paying</span>
       <h2>If premiums continue to be paid</h2>
 
@@ -399,8 +408,7 @@
     </article>
 
     <!-- Surrender -->
-    <article class="card" style="${surrender_card_style}">
-      <div class="aura red"></div>
+    <article class="card card-surrender" style="${surrender_card_style}">
       <span class="tag red">Surrender</span>
       <h2>If you surrender today</h2>
 
