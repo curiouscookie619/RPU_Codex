@@ -10,8 +10,9 @@ import streamlit as st
 from core.db import init_db, get_conn
 from core.event_logger import log_event
 from core.pdf_reader import read_pdf
+from core.renderers.gis_html import render_gis_renewal_html
 from products.registry import detect_product
-from core.output_pdf import render_one_pager
+from core.output_pdf import render_pdf_from_html
 
 
 def _sha256_bytes(b: bytes) -> str:
@@ -192,6 +193,7 @@ def main():
         debug = st.checkbox("Debug mode (show what was extracted)", value=True)
         uploaded = st.file_uploader("Upload BI PDF", type=["pdf"])
         ptd = st.date_input("PTD (Next Premium Due Date)", value=None, format="DD/MM/YYYY")
+        surrender_value = st.number_input("Surrender Value (₹)", min_value=0.0, step=10000.0, format="%.2f")
         submitted = st.form_submit_button("Generate")
 
     if not submitted:
@@ -276,68 +278,14 @@ def main():
         )
 
         st.divider()
-        st.subheader("Fully Paid vs Reduced Paid-Up (Summary)")
-
-        fully = outputs.fully_paid or {}
-        rpu = outputs.reduced_paid_up or {}
-
-        # Premium
-        st.markdown("**Premium (from BI Premium Summary)**")
-        st.write(f"- Instalment Premium without GST: ₹{_fmt_money(fully.get('instalment_premium_without_gst'))}")
-
-        st.divider()
-
-        # Fully Paid (stacked - responsive)
-        st.markdown("### Fully Paid (as per BI)")
-        _render_income_segments_bullets(fully.get("income_segments") or [], "Income pay-outs")
-        st.write(f"- Total Income (sum): ₹{_fmt_money(fully.get('total_income'))}")
-        st.write(f"- Maturity / Lump Sum: ₹{_fmt_money(fully.get('maturity'))}")
-        st.write(f"- Death Benefit (schedule last year): ₹{_fmt_money(fully.get('death_last_year'))}")
-
-        st.divider()
-
-        st.markdown("### Reduced Paid-Up (Assuming non-payment after PTD + grace)")
-        st.write(f"- RPU factor (R = Pp/Pt): **{rpu.get('rpu_factor')}**")
-
-        # Remaining schedule (full-pay amounts)
-        remaining_items = rpu.get("income_items_remaining_full") or []
-        remaining_segments = _segments_from_income_items(remaining_items)
-        _render_income_segments_bullets(remaining_segments, "Remaining income schedule (as per BI)")
-
-        st.write(f"- Total Income over term (It): ₹{_fmt_money(rpu.get('income_total_full'))}")
-        st.write(f"- Income already paid till RPU date (Ia): ₹{_fmt_money(rpu.get('income_already_paid'))}")
-        st.write(f"- Income due after RPU date (full-pay reference): ₹{_fmt_money(rpu.get('income_due_full'))}")
-        st.write(f"- **Net Income payable after RPU (SL formula): ₹{_fmt_money(rpu.get('income_payable_after_rpu'))}**")
-
-        st.write(f"- Maturity (scaled): ₹{_fmt_money(rpu.get('maturity'))}")
-        st.write(f"- Death Benefit (scaled): ₹{_fmt_money(rpu.get('death_scaled'))}")
-
-        # Notes
-        if outputs.notes:
-            st.divider()
-            st.subheader("Notes")
-            for n in outputs.notes:
-                st.write(f"- {n}")
+        st.subheader("Renewal decision view")
+        html_out = render_gis_renewal_html(extracted, outputs, surrender_value if surrender_value else None)
+        st.components.v1.html(html_out, height=1200, scrolling=True)
 
         # ---------- PDF download ----------
         st.divider()
-        st.subheader("Download one-pager (neutral)")
-        pdf_bytes = render_one_pager(
-            customer_name=(extracted.proposer_name_transient or "Customer"),
-            product_name=extracted.product_name,
-            summary={
-                "Mode": extracted.mode,
-                "PT": extracted.policy_term_years,
-                "PPT": extracted.ppt_years,
-                "BI Date": str(extracted.bi_generation_date),
-                "RCD": str(outputs.rcd),
-                "PTD": str(ptd),
-                "Assumed RPU Date (PTD + Grace)": str(outputs.rpu_date),
-            },
-            fully_paid=fully,
-            rpu=rpu,
-            notes=outputs.notes or [],
-        )
+        st.subheader("Download PDF")
+        pdf_bytes = render_pdf_from_html(html_out)
         st.download_button(
             "Download PDF",
             data=pdf_bytes,
