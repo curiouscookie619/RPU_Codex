@@ -113,6 +113,7 @@
       flex-wrap:wrap;
       gap: 10px;
       margin-bottom: 10px;
+      align-items: stretch;
     }
 
     .card{
@@ -307,6 +308,8 @@
       @page { size: A4; margin: 8mm; }
       body{ background:#ffffff; }
       .sheet{ margin:0; width:auto; min-height:auto; box-shadow:none; }
+      .grid-3{ flex-wrap: nowrap; }
+      .card{ min-width: 0; width: 33%; }
     }
   </style>
 </head>
@@ -341,11 +344,6 @@
         <div class="pill green"><strong>Instalment Premium (excl. GST):</strong> ₹ ${instalment_premium}</div>
         <div class="pill blue"><strong>Premiums paid till PTD:</strong> ${premiums_paid_label}</div>
         <div class="pill red" style="${surrender_pill_style}"><strong>Surrender Value:</strong> ${surrender_value}</div>
-      </div>
-
-      <div class="k" style="margin-top:10px;">What this page shows</div>
-      <div class="v" style="font-weight:600;">
-        Renewal decision view: Surrender vs Reduced Paid-Up vs Continue premium-paying
       </div>
     </div>
   </div>
