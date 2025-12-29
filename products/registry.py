@@ -3,9 +3,10 @@ from __future__ import annotations
 from typing import Dict, List, Tuple
 from .base import ProductHandler
 from .gis import GISHandler
+from .fsp import FSPHandler
 
 
-_HANDLERS: List[ProductHandler] = [GISHandler()]
+_HANDLERS: List[ProductHandler] = [GISHandler(), FSPHandler()]
 
 
 def detect_product(parsed) -> Tuple[ProductHandler, float, dict]:
