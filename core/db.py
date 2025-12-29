@@ -9,12 +9,25 @@ def get_conn():
     dsn = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
     return psycopg2.connect(dsn)
 
+def try_get_conn():
+    """Best-effort connector that returns None instead of raising on failure."""
+    dsn = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+    try:
+        return psycopg2.connect(dsn)
+    except Exception as exc:
+        print(f"[db] connect failed: {exc}")
+        return None
+
 def init_db():
     """Initialize DB objects required for logging and feedback.
 
     Safe to run on every app start; uses CREATE IF NOT EXISTS and small ALTER migrations.
     """
-    with get_conn() as conn, conn.cursor() as cur:
+    conn = try_get_conn()
+    if conn is None:
+        return
+
+    with conn, conn.cursor() as cur:
         # Needed for gen_random_uuid()
         cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
 

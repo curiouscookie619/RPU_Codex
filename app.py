@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 import streamlit as st
 
-from core.db import init_db, get_conn
+from core.db import init_db, try_get_conn
 from core.event_logger import log_event
 from core.pdf_reader import read_pdf
 from core.renderers.gis_html import render_gis_renewal_html
@@ -68,7 +68,11 @@ def save_case(
     extracted_json: Dict[str, Any],
     outputs_json: Dict[str, Any],
 ) -> None:
-    with get_conn() as conn, conn.cursor() as cur:
+    conn = try_get_conn()
+    if conn is None:
+        return
+
+    with conn, conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO cases(case_id, session_id, product_id, product_confidence, bi_date, ptd, rcd, rpu_date,
