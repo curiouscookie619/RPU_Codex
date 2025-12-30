@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import math
+from datetime import date
 from pathlib import Path
 from string import Template
 from typing import Any, Dict, List, Optional
@@ -40,6 +40,17 @@ def _payments_label(count: Optional[int], mode: str) -> str:
         1: "years",
     }.get(per_year, "payments")
     return f"{int(count)} {unit} [{years_str} years]"
+
+
+def _as_date(v: Any) -> Optional[date]:
+    if isinstance(v, date):
+        return v
+    if isinstance(v, str):
+        try:
+            return date.fromisoformat(v)
+        except Exception:
+            return None
+    return None
 
 
 def _income_rows_from_segments(segments: List[Dict[str, Any]], fallback_total: str) -> str:
@@ -144,10 +155,31 @@ def render_gis_renewal_html(
     payments_paid = computed.months_paid
     payments_total = computed.months_payable_total
 
-    fp_give_raw = (instalment or 0) * payments_total if instalment is not None else None
+    payments_remaining = (payments_total - payments_paid) if payments_total is not None else None
+    fp_give_raw = (instalment or 0) * payments_remaining if instalment is not None else None
     rpu_give_raw = (instalment or 0) * payments_paid if instalment is not None else None
 
-    fp_income_total = (computed.fully_paid or {}).get("total_income")
+    ptd = computed.ptd
+    rcd = computed.rcd
+
+    def _payout_date(it: Dict[str, Any]) -> Optional[date]:
+        pd = _as_date(it.get("payout_date"))
+        if pd:
+            return pd
+        cy = it.get("calendar_year")
+        try:
+            return date(int(cy), 12, 31)
+        except Exception:
+            return None
+
+    fp_items_all = (computed.fully_paid or {}).get("income_items") or []
+    fp_items_future = []
+    for it in fp_items_all:
+        pd = _payout_date(it) or rcd
+        if pd > ptd:
+            fp_items_future.append({**it, "payout_date": pd})
+
+    fp_income_total = sum(it.get("amount", 0) or 0 for it in fp_items_future)
     fp_maturity = (computed.fully_paid or {}).get("maturity")
     fp_get_raw = (fp_income_total or 0) + (fp_maturity or 0 if fp_maturity is not None else 0)
 
@@ -166,21 +198,13 @@ def render_gis_renewal_html(
             return "—"
 
     # Income segments
-    fp_segments = (computed.fully_paid or {}).get("income_segments") or []
-    if not fp_segments:
-        fp_segments = _segments_from_income_items((computed.fully_paid or {}).get("income_items") or [])
+    fp_segments = _segments_from_income_items(fp_items_future)
     fp_income_rows = _income_rows_from_segments(fp_segments, _fmt_money(fp_income_total))
 
     rpu_items = (computed.reduced_paid_up or {}).get("income_items") or []
     rpu_future_items = [it for it in rpu_items if it.get("bucket") == "future_rpu"]
     rpu_segments = _segments_from_income_items(rpu_future_items)
     rpu_income_rows = _income_rows_from_segments(rpu_segments, _fmt_money(rpu_income_total))
-
-    # FD numbers
-    fd_principal = fp_give_raw
-    fd_interest = fd_principal * 0.07 if fd_principal is not None else None
-    fd_tax = fd_interest * 0.20 if fd_interest is not None else None
-    fd_net = fd_interest - fd_tax if fd_interest is not None and fd_tax is not None else None
 
     # Surrender
     surrender_present = surrender_value is not None
@@ -211,10 +235,6 @@ def render_gis_renewal_html(
         "fp_get": _fmt_money(fp_get_raw),
         "fp_ratio": _ratio(fp_get_raw, fp_give_raw),
         "fp_death": _fmt_money(fp_death),
-        "fd_principal": _fmt_money(fd_principal),
-        "fd_interest": _fmt_money(fd_interest),
-        "fd_tax": _fmt_money(fd_tax),
-        "fd_net": _fmt_money(fd_net),
         "rpu_income_rows": rpu_income_rows,
         "fp_income_rows": fp_income_rows,
         "rpu_income_total": _fmt_money(rpu_income_total),

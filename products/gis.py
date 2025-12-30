@@ -18,6 +18,28 @@ def _clean_text(s: Any) -> str:
     return " ".join(str(s or "").replace("\n", " ").split()).strip()
 
 
+def _sanitize_name(raw: Optional[str]) -> Optional[str]:
+    if not raw:
+        return None
+    s = _clean_text(raw)
+    low = s.lower()
+    markers = [
+        "name of the product",
+        "product:",
+        "plan:",
+        "uin",
+        "policy term",
+        "premium payment term",
+    ]
+    cut = len(s)
+    for m in markers:
+        idx = low.find(m)
+        if idx > 0:
+            cut = min(cut, idx)
+    s = s[:cut].strip(" -:|,") if cut < len(s) else s
+    return s or None
+
+
 def _norm_key(s: Any) -> str:
     s = _clean_text(s)
     s = s.replace(" :", ":")
@@ -262,7 +284,7 @@ class GISHandler(ProductHandler):
 
         product_name = kv.get("name of the product") or "Edelweiss Tokio Life- Guaranteed Income STAR"
         uin = kv.get("unique identification no.") or kv.get("uin")
-        proposer = kv.get("name of the prospect/policyholder")
+        proposer = _sanitize_name(kv.get("name of the prospect/policyholder"))
 
         mode = (kv.get("mode of payment of premium") or "Annual").title()
 

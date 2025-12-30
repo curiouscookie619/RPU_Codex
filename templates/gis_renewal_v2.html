@@ -196,54 +196,6 @@
     .tag.green{ border-color: rgba(22,163,74,0.25); background: rgba(22,163,74,0.06); color:#15803d;}
     .tag.red{ border-color: rgba(239,68,68,0.25); background: rgba(239,68,68,0.06); color:#b91c1c;}
 
-    /* Plan vs FD vs Markets section */
-    .section{
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      box-shadow: 0 2px 10px rgba(15,23,42,0.06);
-      padding: 10px 12px;
-      margin-top: 8px;
-      background:#ffffff;
-    }
-
-    .section h3{
-      margin: 0 0 6px;
-      font-size: 13px;
-      font-weight: 700;
-      color:#111827;
-    }
-
-    .grid-3b{
-      display:grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 8px;
-    }
-
-    .mini-card{
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background:#ffffff;
-      box-shadow: 0 1px 6px rgba(15,23,42,0.06);
-      padding: 10px 10px;
-      font-size: 11px;
-      min-height: 158px;
-    }
-    .mini-card h4{
-      margin: 0 0 6px;
-      font-size: 12px;
-      font-weight: 700;
-      color:#111827;
-    }
-    .mini-card .sub{
-      margin:0 0 6px;
-      font-size: 10px;
-      color: var(--muted2);
-      line-height: 1.35;
-    }
-    .mini-card .row{ padding: 3px 0; }
-    .mini-card .note{ margin-top: 6px; }
-
     /* Brand snapshot (FSP-like) */
     .impact-banner{
       border-radius: 10px;
@@ -300,7 +252,6 @@
       .grid-3{
         flex-direction: column;
       }
-      .grid-3b{ grid-template-columns: 1fr; }
     }
 
     /* Print */
@@ -348,7 +299,7 @@
     </div>
   </div>
 
-  <h1>If you stop paying premiums now — here’s what changes</h1>
+  <h1>Here’s how your policy can look like going forward</h1>
   <p class="sub-title">
     The three outcomes below compare what you give and what you get. The Reduced Paid-Up option assumes the policy becomes RPU after <strong>PTD + grace</strong>.
   </p>
@@ -364,7 +315,7 @@
     <!-- RPU -->
     <article class="card card-rpu">
       <span class="tag blue">Reduced Paid-Up</span>
-      <h2>If you shift to Reduced Paid-Up</h2>
+      <h2>If you stop paying premiums now</h2>
 
       <div class="row"><span>You give</span><span class="amount">₹ ${rpu_give}</span></div>
       <div class="divider"></div>
@@ -386,14 +337,14 @@
     <!-- FP -->
     <article class="card card-fp">
       <span class="tag green">Continue premium-paying</span>
-      <h2>If premiums continue to be paid</h2>
+      <h2>If you keep paying premiums</h2>
 
       <div class="row"><span>You give</span><span class="amount">₹ ${fp_give}</span></div>
       <div class="divider"></div>
 
       ${fp_income_rows}
-      <div class="row"><span>Total income (full)</span><span class="amount">₹ ${fp_income_total}</span></div>
-      <div class="row"><span>Maturity benefit (full)</span><span class="amount">₹ ${fp_maturity}</span></div>
+      <div class="row"><span>Total income (future)</span><span class="amount">₹ ${fp_income_total}</span></div>
+      <div class="row"><span>Maturity benefit</span><span class="amount">₹ ${fp_maturity}</span></div>
 
       <div class="divider"></div>
       <div class="row"><span><strong>You get</strong></span><span class="amount"><strong>₹ ${fp_get}</strong></span></div>
@@ -422,66 +373,6 @@
       </p>
     </article>
 
-  </section>
-
-  <!-- =========================
-       PLAN vs FD vs MARKETS (FSP-like, FP values)
-       ========================= -->
-  <section class="section">
-    <h3>Your Plan vs FDs vs Markets</h3>
-
-    <div class="grid-3b">
-
-      <!-- Plan (FP only) -->
-      <div class="mini-card" style="border-color: rgba(22,163,74,0.25);">
-        <h4>Your Plan (premium-paying)</h4>
-        <p class="sub">What you get if premiums continue to be paid.</p>
-
-        <div class="row"><span>Payable over PPT</span><span class="amount">₹ ${fp_give}</span></div>
-        <div class="row"><span>Total income (over term)</span><span class="amount">₹ ${fp_income_total}</span></div>
-        <div class="row"><span>Maturity benefit</span><span class="amount">₹ ${fp_maturity}</span></div>
-        <div class="row"><span><strong>Total returns</strong></span><span class="amount"><strong>₹ ${fp_get}</strong></span></div>
-
-        <div class="divider"></div>
-        <div class="row"><span>Life cover (last year)</span><span class="amount">₹ ${fp_death}</span></div>
-
-        <p class="note">
-          Becomes a long-term income stream + maturity payout, while keeping life cover.
-        </p>
-      </div>
-
-      <!-- FD (dynamic from payable-over-PPT, fixed rate/tax) -->
-      <div class="mini-card">
-        <h4>If the same amount sat in an FD</h4>
-        <p class="sub">Assumes <strong>7% FD rate</strong> and <strong>20% tax</strong>.</p>
-
-        <div class="row"><span>Principal (over PPT)</span><span class="amount">₹ ${fd_principal}</span></div>
-        <div class="row"><span>Interest (7% / year)</span><span class="amount">₹ ${fd_interest}</span></div>
-        <div class="row"><span>Tax (20% on interest)</span><span class="amount">₹ ${fd_tax}</span></div>
-        <div class="row"><span><strong>You actually keep</strong></span><span class="amount"><strong>₹ ${fd_net}</strong></span></div>
-
-        <p class="note">
-          FD returns can change over time, and tax reduces your effective take-home. In short: stable, but not designed to create a long multi-decade income stream.
-        </p>
-      </div>
-
-      <!-- Markets -->
-      <div class="mini-card">
-        <h4>If the same amount is only in markets</h4>
-        <p class="sub">Useful for growth — but it behaves very differently.</p>
-
-        <div class="row"><span>Upside potential</span><span class="amount">Yes, but not guaranteed</span></div>
-        <div class="row"><span>Downside risk</span><span class="amount">Present</span></div>
-        <div class="row"><span>Guaranteed income?</span><span class="amount">No</span></div>
-        <div class="row"><span>Guaranteed maturity?</span><span class="amount">No</span></div>
-        <div class="row"><span>Life cover?</span><span class="amount">No</span></div>
-
-        <p class="note">
-          Markets can be excellent for long-term growth, but they do not guarantee steady income or life cover. Your plan is designed to fill exactly that gap.
-        </p>
-      </div>
-
-    </div>
   </section>
 
   <!-- =========================

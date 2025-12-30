@@ -14,6 +14,28 @@ def _clean(s: Any) -> str:
     return " ".join(str(s or "").replace("\n", " ").split()).strip()
 
 
+def _sanitize_name(raw: Optional[str]) -> Optional[str]:
+    if not raw:
+        return None
+    s = _clean(raw)
+    low = s.lower()
+    markers = [
+        "name of the product",
+        "product:",
+        "plan:",
+        "uin",
+        "policy term",
+        "premium payment term",
+    ]
+    cut = len(s)
+    for m in markers:
+        idx = low.find(m)
+        if idx > 0:
+            cut = min(cut, idx)
+    s = s[:cut].strip(" -:|,") if cut < len(s) else s
+    return s or None
+
+
 def _to_number(text: Any) -> Optional[float]:
     s = _clean(text)
     if not s or s in {"-", "—"}:
@@ -34,12 +56,13 @@ def _last_non_null(vals: List[Optional[float]]) -> Optional[float]:
 
 def _parse_first_page_fields(text: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
+
     def grab(pattern: str) -> Optional[str]:
         m = re.search(pattern, text, flags=re.IGNORECASE)
         return _clean(m.group(1)) if m else None
 
     out["product_name"] = grab(r"Name of the Product:\s*([^\n]+)")
-    out["proposer"] = grab(r"Name of the Prospect/Policyholder\s*:\s*([^\n]+)")
+    out["proposer"] = _sanitize_name(grab(r"Name of the Prospect/Policyholder\s*:\s*([^\n]+)"))
     out["life_assured"] = grab(r"Name of the Life Assured\s*:\s*([^\n]+)")
     out["mode"] = grab(r"Mode of Payment of Premium\s*:\s*([A-Za-z\- ]+)")
     out["policy_term"] = grab(r"PolicyTerm\s*\(in years\)\s*:\s*([0-9]+)")
