@@ -56,6 +56,7 @@ def _last_non_null(vals: List[Optional[float]]) -> Optional[float]:
 
 def _parse_first_page_fields(text: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
+
     def grab(pattern: str) -> Optional[str]:
         m = re.search(pattern, text, flags=re.IGNORECASE)
         return _clean(m.group(1)) if m else None
