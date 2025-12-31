@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.models import ParsedPDF, ExtractedFields, ComputedOutputs
 from core.pdf_reader import extract_bi_generation_date
-from core.date_logic import derive_rcd_and_rpu_dates
+from core.date_logic import derive_rcd_and_rpu_dates, MODE_MONTHS
 from products.base import ProductHandler
 
 
@@ -16,6 +16,28 @@ from products.base import ProductHandler
 
 def _clean_text(s: Any) -> str:
     return " ".join(str(s or "").replace("\n", " ").split()).strip()
+
+
+def _sanitize_name(raw: Optional[str]) -> Optional[str]:
+    if not raw:
+        return None
+    s = _clean_text(raw)
+    low = s.lower()
+    markers = [
+        "name of the product",
+        "product:",
+        "plan:",
+        "uin",
+        "policy term",
+        "premium payment term",
+    ]
+    cut = len(s)
+    for m in markers:
+        idx = low.find(m)
+        if idx > 0:
+            cut = min(cut, idx)
+    s = s[:cut].strip(" -:|,") if cut < len(s) else s
+    return s or None
 
 
 def _norm_key(s: Any) -> str:
@@ -262,7 +284,7 @@ class GISHandler(ProductHandler):
 
         product_name = kv.get("name of the product") or "Edelweiss Tokio Life- Guaranteed Income STAR"
         uin = kv.get("unique identification no.") or kv.get("uin")
-        proposer = kv.get("name of the prospect/policyholder")
+        proposer = _sanitize_name(kv.get("name of the prospect/policyholder"))
 
         mode = (kv.get("mode of payment of premium") or "Annual").title()
 
@@ -384,31 +406,33 @@ class GISHandler(ProductHandler):
         """Compute Fully Paid vs Reduced Paid-Up values for GIS.
 
         Income RPU logic (as per SL):
-          R = Pp / Pt
-          Reduced paid-up income payable = (It * R) - (Ia * (1 - R))
-
-        where:
-          - Pp = premiums payable from RCD up to PTD (in months for this product)
-          - Pt = total premiums payable during PPT (in months)
-          - It = total income benefits over the full income payout term (as per BI schedule)
-          - Ia = income already paid up to the RPU date (assume no payout on RCD; premium is paid first, then payout)
+          - Premium for Policy Year N is paid at the beginning of Policy Year N.
+          - Income for Policy Year N is paid at the end of Policy Year N.
+          - RPU applies only to income payouts due strictly after PTD + grace.
         """
+
+        mode_clean = extracted.mode or "Annual"
 
         rcd, rpu_date, grace_days = derive_rcd_and_rpu_dates(
             bi_date=extracted.bi_generation_date,
             ptd=ptd,
-            mode=extracted.mode,
+            mode=mode_clean,
         )
 
-        # ---- Premium months (Pp, Pt) ----
-        # IMPORTANT: months_paid is based on PTD (not PTD+grace), per agreed logic.
-        months_paid = max(0, (ptd.year - rcd.year) * 12 + (ptd.month - rcd.month))
-        months_payable_total = int(extracted.ppt_years) * 12 if extracted.ppt_years else 0
+        # ---- Premiums paid ratio (R = Pp / Pt) ----
+        interval_months = MODE_MONTHS.get(mode_clean, MODE_MONTHS.get(mode_clean.title(), 12))
+        months_between_rcd_ptd = (ptd.year - rcd.year) * 12 + (ptd.month - rcd.month)
+        if ptd.day < rcd.day:
+            months_between_rcd_ptd -= 1
+        months_between_rcd_ptd = max(0, months_between_rcd_ptd)
 
-        R = (months_paid / months_payable_total) if months_payable_total > 0 else 0.0
+        premiums_paid = months_between_rcd_ptd // max(1, interval_months)
+        premiums_total = int((extracted.ppt_years or 0) * (12 / max(1, interval_months)))
+
+        R = (premiums_paid / premiums_total) if premiums_total > 0 else 0.0
         R = max(0.0, min(1.0, R))
 
-        # ---- Build income event schedule from BI (calendar years) ----
+        # ---- Build income event schedule from BI (calendar years, payouts at end of PY) ----
         income_events: List[Dict[str, Any]] = []
         for r in (extracted.schedule_rows or []):
             py = r.get("policy_year")
@@ -423,8 +447,8 @@ class GISHandler(ProductHandler):
             # Calendar year label: RCD.year + PolicyYear - 1
             cal_year = int(rcd.year + py_i - 1)
 
-            # Payout date at end of nth policy year = RCD + (n-1) years
-            payout_date = _safe_anniversary(rcd, py_i - 1)
+            # Payout date at end of nth policy year = RCD + n years
+            payout_date = _safe_anniversary(rcd, py_i)
 
             income_events.append(
                 {
@@ -436,18 +460,69 @@ class GISHandler(ProductHandler):
             )
         income_events.sort(key=lambda x: x["policy_year"])
 
-        It = sum(e["amount"] for e in income_events)
+        total_income_full = sum(e["amount"] for e in income_events)
 
-        # Income already paid up to RPU date (strictly before RPU date)
-        Ia = sum(e["amount"] for e in income_events if e["payout_date"] < rpu_date)
+        income_paid_full = [e for e in income_events if e["payout_date"] <= ptd]
+        income_within_grace = [
+            e for e in income_events if ptd < e["payout_date"] <= rpu_date
+        ]
+        income_future = [e for e in income_events if e["payout_date"] > rpu_date]
+
+        Ia = sum(e["amount"] for e in income_paid_full)
+        Ifuture = sum(e["amount"] for e in income_future)
+
+        income_due_full = Ifuture
 
         # ---- Reduced paid-up income payable (net after adjustment) ----
-        rpu_income_total = (It * R) - (Ia * (1.0 - R))
-        if rpu_income_total < 0:
-            rpu_income_total = 0.0
+        excess_paid = Ia * (1.0 - R)
+        rpu_income_total_formula = (Ifuture * R) - excess_paid
+        if rpu_income_total_formula < 0:
+            rpu_income_total_formula = 0.0
 
-        # Remaining full-pay income after RPU date (for reference)
-        income_due_full = sum(e["amount"] for e in income_events if e["payout_date"] >= rpu_date)
+        remaining_events = income_future
+        deduction_per_remaining = (excess_paid / len(remaining_events)) if remaining_events else 0.0
+
+        income_items_rpu: List[Dict[str, Any]] = []
+        income_items_remaining_full: List[Dict[str, Any]] = []
+        future_payable_sum = 0.0
+
+        for e in income_events:
+            payout_date = e["payout_date"]
+            original_amt = float(e["amount"])
+            bucket = "future_rpu"
+            final_amt = original_amt
+
+            if payout_date <= ptd:
+                bucket = "already_paid"
+                final_amt = original_amt
+            elif payout_date <= rpu_date:
+                bucket = "within_grace_full"
+                final_amt = original_amt
+            else:
+                base = original_amt * R
+                final_amt = max(0.0, base - deduction_per_remaining)
+                future_payable_sum += final_amt
+                income_items_remaining_full.append(
+                    {
+                        "policy_year": e["policy_year"],
+                        "calendar_year": e["calendar_year"],
+                        "payout_date": payout_date,
+                        "amount": original_amt,
+                    }
+                )
+
+            income_items_rpu.append(
+                {
+                    "policy_year": e["policy_year"],
+                    "calendar_year": e["calendar_year"],
+                    "payout_date": payout_date,
+                    "amount": round(final_amt, 2),
+                    "original_amount": original_amt,
+                    "bucket": bucket,
+                }
+            )
+
+        rpu_income_total = round(future_payable_sum, 2)
 
         maturity = _last_non_null(extracted.schedule_rows, "maturity")
         last_death = _last_non_null(extracted.schedule_rows, "death")
@@ -456,49 +531,53 @@ class GISHandler(ProductHandler):
 
         fully_paid = {
             "instalment_premium_without_gst": extracted.annualized_premium_excl_tax,
-            "total_income": float(It),
+            "total_income": float(total_income_full),
             "income_segments": segments,
             "income_items": income_events,
             "maturity": float(maturity) if maturity is not None else None,
             "death_last_year": float(last_death) if last_death is not None else None,
         }
 
-        remaining_events = [e for e in income_events if e["payout_date"] >= rpu_date]
-        excess_paid = Ia * (1.0 - R)
-        deduction_per_remaining = (excess_paid / len(remaining_events)) if remaining_events else 0.0
-
-        income_items_rpu: List[Dict[str, Any]] = []
-        for e in remaining_events:
-            scaled = float(e["amount"]) * R
-            adj = max(0.0, scaled - deduction_per_remaining)
-            income_items_rpu.append(
-                {
-                    "policy_year": e["policy_year"],
-                    "calendar_year": e["calendar_year"],
-                    "payout_date": e["payout_date"],
-                    "amount": round(adj, 2),
-                }
-            )
-
         reduced_paid_up = {
             "rpu_factor": round(R, 6),
-            "income_total_full": float(It),
+            "income_total_full": float(total_income_full),
             "income_already_paid": float(Ia),
             "income_due_full": float(income_due_full),
             "income_payable_after_rpu": float(rpu_income_total),
+            "income_payable_after_rpu_formula": float(round(rpu_income_total_formula, 2)),
             "income_segments": segments,
             "income_items": income_items_rpu,
+            "income_items_remaining_full": income_items_remaining_full,
+            "income_paid_full_count": len(income_paid_full),
+            "income_within_grace_count": len(income_within_grace),
+            "income_future_count": len(income_future),
+            "income_future_sum": float(Ifuture),
             "excess_paid_income": float(excess_paid),
             "deduction_per_remaining": float(deduction_per_remaining),
             "maturity": (float(maturity) * R) if maturity is not None else None,
             "death_scaled": (float(last_death) * R) if last_death is not None else None,
+            "debug": {
+                "premiums_paid": int(premiums_paid),
+                "premiums_total": int(premiums_total),
+                "months_between_rcd_ptd": int(months_between_rcd_ptd),
+                "interval_months": int(interval_months),
+                "grace_days": grace_days,
+                "income_already_paid_Ia": float(Ia),
+                "income_future_sum_Ifuture": float(Ifuture),
+                "excess_income": float(excess_paid),
+                "deduction_per_remaining": float(deduction_per_remaining),
+                "future_payable_formula": float(rpu_income_total_formula),
+                "future_payable_sum_after_allocation": float(rpu_income_total),
+            },
         }
 
         notes = [
             "Device is logged as 'unknown' (internal prototype).",
             "Calendar year = RCD.year + PolicyYear - 1 (as per derived RCD).",
-            "Income already paid (Ia) includes payouts with payout_date < RPU date (PTD + grace).",
-            "Reduced paid-up income payable uses: (It × R) − (Ia × (1 − R)), where R = Pp/Pt.",
+            "Premium for Policy Year N is assumed at the start of the policy year; income is paid at the end of that policy year.",
+            "Income already paid (Ia) includes payouts with payout_date ≤ PTD; payouts between PTD and PTD+grace remain fully payable.",
+            "Reduced paid-up income (post PTD+grace) uses instalment-wise: Base = Original × R; Correction = Excess/N; Final = max(0, Base − Correction).",
+            "Excess = Ia × (1 − R) where R = Pp/Pt using premiums paid up to PTD only.",
         ]
 
         return ComputedOutputs(
@@ -506,8 +585,8 @@ class GISHandler(ProductHandler):
             ptd=ptd,
             rpu_date=rpu_date,
             grace_period_days=grace_days,
-            months_paid=months_paid,
-            months_payable_total=months_payable_total,
+            months_paid=int(premiums_paid),
+            months_payable_total=int(premiums_total),
             rpu_factor=R,
             fully_paid=fully_paid,
             reduced_paid_up=reduced_paid_up,
