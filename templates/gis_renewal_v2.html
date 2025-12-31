@@ -186,6 +186,13 @@
         radial-gradient(circle at 10% 75%, rgba(239,68,68,0.12), transparent 55%),
         #ffffff;
     }
+    .card-surrender-blocked{
+      background:
+        radial-gradient(circle at 85% 20%, rgba(239,68,68,0.28), transparent 45%),
+        radial-gradient(circle at 10% 75%, rgba(239,68,68,0.18), transparent 55%),
+        #fff5f5;
+      border-color: rgba(239,68,68,0.35);
+    }
 
     .tag{
       display:inline-block;
@@ -361,7 +368,7 @@
     </article>
 
     <!-- Surrender -->
-    <article class="card card-surrender" style="${surrender_card_style}">
+    <article class="card card-surrender ${surrender_extra_class}" style="${surrender_card_style}">
       <span class="tag red">Surrender</span>
       <h2>If you surrender today</h2>
 
@@ -373,7 +380,7 @@
       <div class="row"><span><strong>Difference</strong></span><span class="amount"><strong>₹ ${surrender_diff}</strong></span></div>
 
       <p class="note">
-        Surrender ends the policy and future benefits stop. The value shown here depends on the surrender value you input.
+        ${surrender_note}
       </p>
     </article>
 

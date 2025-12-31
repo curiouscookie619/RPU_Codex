@@ -230,11 +230,22 @@ def render_gis_renewal_html(
 
     # Surrender
     surrender_present = surrender_value is not None
-    surrender_card_style = "" if surrender_present else "display:none;"
+    surrender_blocked = rpu_ineligible  # blanket rule: if RPU not possible, surrender not possible
+    surrender_card_style = "" if surrender_present or surrender_blocked else "display:none;"
     surrender_pill_style = "" if surrender_present else "display:none;"
     surrender_diff = None
-    if surrender_present and rpu_give_raw is not None:
-        surrender_diff = (rpu_give_raw or 0) - (surrender_value or 0)
+
+    if surrender_blocked:
+        surrender_value_text = "Not available"
+        surrender_diff = rpu_give_raw or 0
+        surrender_note = "Surrender not available because fewer than 2 policy-year premiums were paid before 01-Oct-2024. Premiums paid are forfeited."
+        surrender_extra_class = "card-surrender-blocked"
+    else:
+        surrender_value_text = surrender_value
+        if surrender_present and rpu_give_raw is not None:
+            surrender_diff = (rpu_give_raw or 0) - (surrender_value or 0)
+        surrender_note = "Surrender ends the policy and future benefits stop. The value shown here depends on the surrender value you input."
+        surrender_extra_class = ""
 
     premiums_paid_label = _payments_label(payments_paid, mode)
 
@@ -246,10 +257,12 @@ def render_gis_renewal_html(
         "mode": mode,
         "instalment_premium": _fmt_money(instalment),
         "premiums_paid_label": premiums_paid_label,
-        "surrender_value": _fmt_money(surrender_value) if surrender_present else "—",
+        "surrender_value": _fmt_money(surrender_value_text) if surrender_value_text is not None else "—",
         "surrender_card_style": surrender_card_style,
         "surrender_pill_style": surrender_pill_style,
         "surrender_diff": _fmt_money(surrender_diff) if surrender_diff is not None else "—",
+        "surrender_note": surrender_note,
+        "surrender_extra_class": surrender_extra_class,
         "rpu_give": _fmt_money(rpu_give_raw),
         "fp_give": _fmt_money(fp_give_raw),
         "fp_income_total": _fmt_money(fp_income_total),
