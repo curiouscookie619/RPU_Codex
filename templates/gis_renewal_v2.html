@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Renewal decision — Guaranteed Income STAR (Internal)</title>
+
+  <style>
+    :root{
+      --edel-blue:#1e3a8a;
+      --edel-orange:#f97316;
+
+      --aura-green:#16a34a;
+      --aura-blue:#2563eb;
+      --aura-red:#ef4444;
+
+      --ink:#0f172a;
+      --muted:#475569;
+      --muted2:#64748b;
+      --card:#ffffff;
+      --border:#e2e8f0;
+      --sheet:#ffffff;
+      --bg:#ffffff;
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background: var(--bg);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color:var(--ink);
+    }
+
+    /* A4 sheet */
+    .sheet{
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      background: var(--sheet);
+      padding: 10mm;
+    }
+
+    h1{
+      margin: 2px 0 6px;
+      font-size: 20px;
+      line-height: 1.25;
+      letter-spacing: -0.2px;
+      font-weight: 700;
+      color:#111827;
+    }
+
+    .sub-title{
+      margin:0 0 10px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    /* Customer strip */
+    .top-strip{
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      box-shadow: 0 2px 10px rgba(15,23,42,0.06);
+      background:#ffffff;
+      display:grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .strip-block .k{
+      font-size: 10px;
+      color: var(--muted2);
+      margin-bottom: 2px;
+    }
+    .strip-block .v{
+      font-size: 12px;
+      font-weight: 600;
+      color:#0f172a;
+      line-height: 1.2;
+    }
+    .strip-block .v small{
+      font-weight: 500;
+      color: var(--muted);
+    }
+
+    .strip-right{
+      display:flex;
+      gap: 10px;
+      justify-content: flex-end;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .pill{
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 10px;
+      border: 1px solid var(--border);
+      background:#f8fafc;
+      color:#0f172a;
+      white-space: nowrap;
+    }
+    .pill strong{font-weight:700}
+    .pill.blue{ border-color: rgba(37,99,235,0.25); background: rgba(37,99,235,0.06); color:#1d4ed8;}
+    .pill.green{ border-color: rgba(22,163,74,0.25); background: rgba(22,163,74,0.06); color:#15803d;}
+    .pill.red{ border-color: rgba(239,68,68,0.25); background: rgba(239,68,68,0.06); color:#b91c1c;}
+
+    /* 3 cards */
+    .grid-3{
+      display:flex;
+      flex-wrap:wrap;
+      gap: 10px;
+      margin-bottom: 10px;
+      align-items: stretch;
+    }
+
+    .card{
+      border-radius: 14px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 10px rgba(15,23,42,0.08);
+      padding: 10px 12px;
+      position: relative;
+      overflow:hidden;
+      min-height: 176px;
+      flex: 1 1 calc(33.333% - 8px);
+      min-width: 230px;
+      background: #fff;
+    }
+
+    .card h2{
+      margin: 0 0 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color:#111827;
+    }
+
+    .card .note{
+      margin: 6px 0 0;
+      font-size: 10px;
+      line-height: 1.35;
+      color: var(--muted);
+    }
+
+    .row{
+      display:flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 4px 0;
+      font-size: 11px;
+      color:#0f172a;
+    }
+    .row span:first-child{color:#111827; font-weight:500;}
+    .row .amount{font-weight:700;}
+
+    .divider{
+      height:1px;
+      background: var(--border);
+      margin: 6px 0 2px;
+    }
+
+    /* Aura-like backgrounds (supported by WeasyPrint better than filter+blur) */
+    .card-rpu{
+      background:
+        radial-gradient(circle at 85% 20%, rgba(37,99,235,0.18), transparent 45%),
+        radial-gradient(circle at 10% 75%, rgba(37,99,235,0.12), transparent 55%),
+        #ffffff;
+    }
+    .card-fp{
+      background:
+        radial-gradient(circle at 85% 20%, rgba(22,163,74,0.18), transparent 45%),
+        radial-gradient(circle at 10% 75%, rgba(22,163,74,0.12), transparent 55%),
+        #ffffff;
+    }
+    .card-surrender{
+      background:
+        radial-gradient(circle at 85% 20%, rgba(239,68,68,0.18), transparent 45%),
+        radial-gradient(circle at 10% 75%, rgba(239,68,68,0.12), transparent 55%),
+        #ffffff;
+    }
+
+    .tag{
+      display:inline-block;
+      font-size: 10px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background:#f8fafc;
+      color:#0f172a;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    .tag.blue{ border-color: rgba(37,99,235,0.25); background: rgba(37,99,235,0.06); color:#1d4ed8;}
+    .tag.green{ border-color: rgba(22,163,74,0.25); background: rgba(22,163,74,0.06); color:#15803d;}
+    .tag.red{ border-color: rgba(239,68,68,0.25); background: rgba(239,68,68,0.06); color:#b91c1c;}
+
+    /* Plan vs FD vs Markets section */
+    .section{
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 10px rgba(15,23,42,0.06);
+      padding: 10px 12px;
+      margin-top: 8px;
+      background:#ffffff;
+    }
+
+    .section h3{
+      margin: 0 0 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color:#111827;
+    }
+
+    .grid-3b{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .mini-card{
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background:#ffffff;
+      box-shadow: 0 1px 6px rgba(15,23,42,0.06);
+      padding: 10px 10px;
+      font-size: 11px;
+      min-height: 158px;
+    }
+    .mini-card h4{
+      margin: 0 0 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color:#111827;
+    }
+    .mini-card .sub{
+      margin:0 0 6px;
+      font-size: 10px;
+      color: var(--muted2);
+      line-height: 1.35;
+    }
+    .mini-card .row{ padding: 3px 0; }
+    .mini-card .note{ margin-top: 6px; }
+
+    /* Brand snapshot (FSP-like) */
+    .impact-banner{
+      border-radius: 10px;
+      padding: 9px 10px;
+      background: #fff7eb;
+      border: 1px solid var(--edel-orange);
+      font-size: 11px;
+      color:#111827;
+      margin-bottom: 8px;
+    }
+    .impact-banner .hl-blue{ color: var(--edel-blue); font-weight: 700; }
+    .impact-banner .hl-orange{ color: var(--edel-orange); font-weight: 700; }
+
+    .thisisus-sub{
+      font-size: 10px;
+      color: var(--muted2);
+      margin: 0 0 6px;
+    }
+
+    .thisisus-board{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      padding: 8px;
+      border-radius: 10px;
+      background: #f8fafc;
+      border: 1px dashed #cbd5e1;
+    }
+
+    .thisisus-chip{
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      background: #ffffff;
+      padding: 8px;
+      font-size: 10px;
+      color: #111827;
+      box-shadow: 0 1px 5px rgba(15, 23, 42, 0.06);
+    }
+
+    .thisisus-chip span.main{
+      display:block;
+      font-weight: 700;
+      font-size: 12px;
+      color: var(--edel-blue);
+    }
+    .thisisus-chip.orange span.main{ color: var(--edel-orange); }
+
+    /* Responsiveness (browser) */
+    @media (max-width: 1100px){
+      .sheet{ width: auto; padding: 14px; }
+      .top-strip{ grid-template-columns: 1fr; }
+      .strip-right{ justify-content:flex-start; flex-wrap:wrap; }
+      .grid-3{
+        flex-direction: column;
+      }
+      .grid-3b{ grid-template-columns: 1fr; }
+    }
+
+    /* Print */
+    @media print {
+      @page { size: A4; margin: 8mm; }
+      body{ background:#ffffff; }
+      .sheet{ margin:0; width:auto; min-height:auto; box-shadow:none; }
+      .grid-3{ flex-wrap: nowrap; }
+      .card{ min-width: 0; width: 33%; }
+    }
+  </style>
+</head>
+
+<body>
+<section class="sheet">
+
+  <!-- =========================
+       HEADER STRIP (ordered)
+       ========================= -->
+  <div class="top-strip">
+    <div class="strip-block">
+      <div class="k">Customer</div>
+      <div class="v">${customer_name} <small>(Life Assured)</small></div>
+      <div class="k" style="margin-top:6px;">Plan</div>
+      <div class="v">${plan_name}</div>
+    </div>
+
+    <div class="strip-block">
+      <div class="k">Policy Term</div>
+      <div class="v">${policy_term}</div>
+
+      <div class="k" style="margin-top:6px;">Premium Payment Term</div>
+      <div class="v">${ppt}</div>
+
+      <div class="k" style="margin-top:6px;">Mode</div>
+      <div class="v">${mode}</div>
+    </div>
+
+    <div class="strip-block">
+      <div class="strip-right">
+        <div class="pill green"><strong>Instalment Premium (excl. GST):</strong> ₹ ${instalment_premium}</div>
+        <div class="pill blue"><strong>Premiums paid till PTD:</strong> ${premiums_paid_label}</div>
+        <div class="pill red" style="${surrender_pill_style}"><strong>Surrender Value:</strong> ${surrender_value}</div>
+      </div>
+    </div>
+  </div>
+
+  <h1>Here’s how your policy can look like going forward</h1>
+  <p class="sub-title">
+    The three outcomes below compare what you give and what you get. The Reduced Paid-Up option assumes the policy becomes RPU after <strong>PTD + grace</strong>.
+  </p>
+
+  <!-- =========================
+       3 MAIN CARDS (order fixed)
+       Card 1: RPU (blue)
+       Card 2: FP (green)
+       Card 3: Surrender (red)
+       ========================= -->
+  <section class="grid-3">
+
+    <!-- RPU -->
+    <article class="card card-rpu">
+      <span class="tag blue">Reduced Paid-Up</span>
+      <h2>If you stop paying premiums now</h2>
+
+      <div class="row"><span>You've given</span><span class="amount">₹ ${rpu_give}</span></div>
+      <div class="divider"></div>
+
+      ${rpu_income_rows}
+      <div class="row"><span>Total income (RPU)</span><span class="amount">₹ ${rpu_income_total}</span></div>
+      <div class="row"><span>Maturity benefit (RPU)</span><span class="amount">₹ ${rpu_maturity}</span></div>
+
+      <div class="divider"></div>
+      <div class="row"><span><strong>You get</strong></span><span class="amount"><strong>₹ ${rpu_get}</strong></span></div>
+      <div class="row"><span>Get / Give</span><span class="amount">${rpu_ratio}</span></div>
+
+      <p class="note">
+        You stop paying premiums after PTD (then grace). You still receive benefits, but future payouts reduce versus full benefits.
+      </p>
+    </article>
+
+    <!-- FP -->
+    <article class="card card-fp">
+      <span class="tag green">Continue premium-paying</span>
+      <h2>If you keep paying premiums</h2>
+
+      <div class="row"><span>You give</span><span class="amount">₹ ${fp_give}</span></div>
+      <div class="divider"></div>
+
+      ${fp_income_rows}
+      <div class="row"><span>Total income (future)</span><span class="amount">₹ ${fp_income_total}</span></div>
+      <div class="row"><span>Maturity benefit</span><span class="amount">₹ ${fp_maturity}</span></div>
+
+      <div class="divider"></div>
+      <div class="row"><span><strong>You get</strong></span><span class="amount"><strong>₹ ${fp_get}</strong></span></div>
+      <div class="row"><span>Get / Give</span><span class="amount">${fp_ratio}</span></div>
+
+      <p class="note">
+        This is the full version of your plan: receive full benefits.
+      </p>
+    </article>
+
+    <!-- Surrender -->
+    <article class="card card-surrender" style="${surrender_card_style}">
+      <span class="tag red">Surrender</span>
+      <h2>If you surrender today</h2>
+
+      <div class="row"><span>You’ve paid so far</span><span class="amount">₹ ${rpu_give}</span></div>
+      <div class="row"><span>You receive (Surrender Value)</span><span class="amount">₹ ${surrender_value}</span></div>
+
+      <div class="divider"></div>
+
+      <div class="row"><span><strong>Difference</strong></span><span class="amount"><strong>₹ ${surrender_diff}</strong></span></div>
+
+      <p class="note">
+        Surrender ends the policy and future benefits stop. The value shown here depends on the surrender value you input.
+      </p>
+    </article>
+
+  </section>
+
+  <!-- =========================
+       BRAND SNAPSHOT (FSP-like)
+       ========================= -->
+  <section class="section" style="margin-top:10px;">
+    <div class="impact-banner">
+      Bonus declared for <span class="hl-blue">13 consecutive years</span> with simple average yield of <span class="hl-orange">8.9%</span>.
+    </div>
+
+    <h3 style="margin-top:0;">This is us</h3>
+    <p class="thisisus-sub">We believe in doing what we say — and doing it well.</p>
+
+    <div class="thisisus-board">
+      <div class="thisisus-chip">
+        <span class="main">99.29%</span>
+        claims settled
+      </div>
+      <div class="thisisus-chip orange">
+        <span class="main">13 consecutive years</span>
+        of declared bonus
+      </div>
+      <div class="thisisus-chip">
+        <span class="main">₹ 9,372 cr</span>
+        customer assets managed
+      </div>
+      <div class="thisisus-chip orange">
+        <span class="main">4 lakh+</span>
+        active customers & counting
+      </div>
+    </div>
+  </section>
+
+</section>
+</body>
+</html>
