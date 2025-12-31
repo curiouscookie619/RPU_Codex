@@ -168,6 +168,12 @@
         radial-gradient(circle at 10% 75%, rgba(37,99,235,0.12), transparent 55%),
         #ffffff;
     }
+    .card-rpu-danger{
+      background:
+        radial-gradient(circle at 85% 20%, rgba(239,68,68,0.18), transparent 45%),
+        radial-gradient(circle at 10% 75%, rgba(239,68,68,0.12), transparent 55%),
+        #ffffff;
+    }
     .card-fp{
       background:
         radial-gradient(circle at 85% 20%, rgba(22,163,74,0.18), transparent 45%),
@@ -313,7 +319,7 @@
   <section class="grid-3">
 
     <!-- RPU -->
-    <article class="card card-rpu">
+    <article class="card card-rpu ${rpu_extra_class}">
       <span class="tag blue">Reduced Paid-Up</span>
       <h2>If you stop paying premiums now</h2>
 
@@ -329,7 +335,7 @@
       <div class="row"><span>Get / Give</span><span class="amount">${rpu_ratio}</span></div>
 
       <p class="note">
-        You stop paying premiums after PTD (then grace). You still receive benefits, but future payouts reduce versus full benefits.
+        ${rpu_note}
       </p>
     </article>
 
