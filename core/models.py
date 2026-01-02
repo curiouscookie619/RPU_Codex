@@ -55,3 +55,5 @@ class ComputedOutputs(BaseModel):
     fully_paid: Dict[str, Any]
     reduced_paid_up: Dict[str, Any]
     notes: List[str] = Field(default_factory=list)
+    irr_rpu: Optional[float] = None
+    irr_fp_incremental: Optional[float] = None

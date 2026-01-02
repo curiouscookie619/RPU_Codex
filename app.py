@@ -7,11 +7,13 @@ from typing import Any, Dict, Optional
 
 import streamlit as st
 
-from core.db import init_db, get_conn
+from core.db import init_db, try_get_conn
 from core.event_logger import log_event
 from core.pdf_reader import read_pdf
+from core.renderers.gis_html import render_gis_renewal_html
 from products.registry import detect_product
-from core.output_pdf import render_one_pager
+from core.output_pdf import render_pdf_from_html
+from core.irr import attach_irrs, build_irr_debug, add_years  # type: ignore[attr-defined]
 
 
 def _sha256_bytes(b: bytes) -> str:
@@ -67,7 +69,11 @@ def save_case(
     extracted_json: Dict[str, Any],
     outputs_json: Dict[str, Any],
 ) -> None:
-    with get_conn() as conn, conn.cursor() as cur:
+    conn = try_get_conn()
+    if conn is None:
+        return
+
+    with conn, conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO cases(case_id, session_id, product_id, product_confidence, bi_date, ptd, rcd, rpu_date,
@@ -173,6 +179,60 @@ def _render_income_segments_bullets(segments: list[dict], title: str, scale: flo
             # Fallback
             st.write(f"- {seg}")
 
+
+def _bucket_mapping_rows(breakdown: list[dict], rcd: date, start_bucket: int) -> list[dict]:
+    rows = []
+    for idx in range(start_bucket, len(breakdown)):
+        b = breakdown[idx]
+        net = (b.get("premium", 0.0) or 0.0) + (b.get("income", 0.0) or 0.0) + (b.get("maturity", 0.0) or 0.0) + (
+            b.get("surrender", 0.0) or 0.0
+        )
+        rows.append(
+            {
+                "bucket": idx,
+                "date": str(add_years(rcd, idx - 1)),
+                "premium": b.get("premium", 0.0) or 0.0,
+                "income": b.get("income", 0.0) or 0.0,
+                "maturity": b.get("maturity", 0.0) or 0.0,
+                "surrender": b.get("surrender", 0.0) or 0.0,
+                "net": net,
+            }
+        )
+    return rows
+
+
+def _vector_head_tail(vec: list[float], head: int = 10, tail: int = 5) -> dict:
+    return {
+        "length": len(vec),
+        "head": vec[: min(len(vec), head)],
+        "tail": vec[-tail:] if len(vec) > tail else vec[:],
+    }
+
+
+def _compare_lists(actual: list[float], expected: list[float], tol: float) -> dict:
+    if len(actual) != len(expected):
+        return {"pass": False, "reason": f"length mismatch (got {len(actual)} expected {len(expected)})"}
+    diffs = [abs(a - e) for a, e in zip(actual, expected)]
+    max_diff = max(diffs) if diffs else 0.0
+    return {"pass": all(d <= tol for d in diffs), "reason": f"max diff={max_diff:.4f}"}
+
+
+def _expected_bi2_vectors():
+    expected_rpu_cf = (
+        [-1500000.0, -1500000.0, -1002150.0, 497850.0]
+        + [101832.9545] * 9
+        + [226295.4545] * 23
+        + [4726295.4545]
+    )
+    expected_fp_incr_cf = (
+        [-3110611.0]
+        + [-1002150.0] * 8
+        + [497850.0]
+        + [995700.0] * 23
+        + [18995700.0]
+    )
+    return expected_rpu_cf, expected_fp_incr_cf
+
 def main():
     st.set_page_config(page_title="RPU Calculator", layout="centered")
 
@@ -192,6 +252,7 @@ def main():
         debug = st.checkbox("Debug mode (show what was extracted)", value=True)
         uploaded = st.file_uploader("Upload BI PDF", type=["pdf"])
         ptd = st.date_input("PTD (Next Premium Due Date)", value=None, format="DD/MM/YYYY")
+        surrender_value = st.number_input("Surrender Value (₹)", min_value=0.0, step=10000.0, format="%.2f")
         submitted = st.form_submit_button("Generate")
 
     if not submitted:
@@ -276,68 +337,113 @@ def main():
         )
 
         st.divider()
-        st.subheader("Fully Paid vs Reduced Paid-Up (Summary)")
+        st.subheader("Renewal decision view")
+        # Compute IRRs (needs surrender value)
+        attach_irrs(extracted, outputs, surrender_value or 0.0)
+        html_out = render_gis_renewal_html(extracted, outputs, surrender_value if surrender_value else None)
+        st.components.v1.html(html_out, height=1200, scrolling=True)
 
-        fully = outputs.fully_paid or {}
-        rpu = outputs.reduced_paid_up or {}
+        # ---------- IRR DEBUG (GIS BI 2) ----------
+        if handler.product_id == "GIS":
+            debug_data = build_irr_debug(extracted, outputs, surrender_value or 0.0)
+            rpu_vec = debug_data.get("rpu_cf", [])
+            fp_vec = debug_data.get("fp_incremental_cf", [])
 
-        # Premium
-        st.markdown("**Premium (from BI Premium Summary)**")
-        st.write(f"- Instalment Premium without GST: ₹{_fmt_money(fully.get('instalment_premium_without_gst'))}")
+            st.subheader("Debug: IRR Vectors (GIS)")
+            with st.expander("IRR vectors, mapping, and checks", expanded=True):
+                st.write(
+                    {
+                        "rpu_vector": _vector_head_tail(rpu_vec),
+                        "fp_incremental_vector": _vector_head_tail(fp_vec),
+                        "rpu_irr": debug_data.get("rpu_irr"),
+                        "fp_incremental_irr": debug_data.get("fp_incremental_irr"),
+                    }
+                )
 
-        st.divider()
+                st.write("First 10 values (RPU / FP incremental)")
+                st.json({"rpu": rpu_vec[:10], "fp_incremental": fp_vec[:10]})
+                st.write("Last 5 values (RPU / FP incremental)")
+                st.json({"rpu": rpu_vec[-5:], "fp_incremental": fp_vec[-5:]})
+                st.write("Full vectors (raw)")
+                st.text_area("RPU cashflow vector", value=json.dumps(rpu_vec, default=str), height=120)
+                st.text_area("FP incremental cashflow vector", value=json.dumps(fp_vec, default=str), height=120)
 
-        # Fully Paid (stacked - responsive)
-        st.markdown("### Fully Paid (as per BI)")
-        _render_income_segments_bullets(fully.get("income_segments") or [], "Income pay-outs")
-        st.write(f"- Total Income (sum): ₹{_fmt_money(fully.get('total_income'))}")
-        st.write(f"- Maturity / Lump Sum: ₹{_fmt_money(fully.get('maturity'))}")
-        st.write(f"- Death Benefit (schedule last year): ₹{_fmt_money(fully.get('death_last_year'))}")
+                st.write("Vector lengths")
+                st.json({"rpu_len": len(rpu_vec), "fp_incremental_len": len(fp_vec)})
 
-        st.divider()
+                st.write("Download full arrays")
+                st.download_button(
+                    "Download IRR vectors JSON",
+                    data=json.dumps({"rpu_cf": rpu_vec, "fp_incremental_cf": fp_vec}, default=str, indent=2),
+                    file_name="irr_vectors.json",
+                )
 
-        st.markdown("### Reduced Paid-Up (Assuming non-payment after PTD + grace)")
-        st.write(f"- RPU factor (R = Pp/Pt): **{rpu.get('rpu_factor')}**")
+                rpu_rows = _bucket_mapping_rows(debug_data.get("rpu_breakdown", []), outputs.rcd, 1)
+                fp_rows = _bucket_mapping_rows(
+                    debug_data.get("fp_breakdown", []), outputs.rcd, debug_data.get("decision_bucket", 1)
+                )
+                st.write("Mapping summary – RPU buckets")
+                st.dataframe(rpu_rows, use_container_width=True)
+                st.write("Mapping summary – FP incremental buckets")
+                st.dataframe(fp_rows, use_container_width=True)
 
-        # Remaining schedule (full-pay amounts)
-        remaining_items = rpu.get("income_items_remaining_full") or []
-        remaining_segments = _segments_from_income_items(remaining_items)
-        _render_income_segments_bullets(remaining_segments, "Remaining income schedule (as per BI)")
+                # Expected comparison (only when matching the specified scenario)
+                is_target_case = (
+                    outputs.rcd == date(2023, 3, 31)
+                    and outputs.ptd == date(2026, 3, 31)
+                    and abs((surrender_value or 0.0) - 1610611.0) < 0.5
+                )
+                if is_target_case:
+                    expected_rpu_cf, expected_fp_incr_cf = _expected_bi2_vectors()
+                    cmp_rpu = _compare_lists(rpu_vec, expected_rpu_cf, 1.0)
+                    cmp_fp = _compare_lists(fp_vec, expected_fp_incr_cf, 1.0)
+                    irr_rpu_ok = (
+                        debug_data.get("rpu_irr") is not None
+                        and abs(debug_data.get("rpu_irr") - 0.04618336) <= 0.0005
+                    )
+                    irr_fp_ok = (
+                        debug_data.get("fp_incremental_irr") is not None
+                        and abs(debug_data.get("fp_incremental_irr") - 0.06558466) <= 0.0005
+                    )
 
-        st.write(f"- Total Income over term (It): ₹{_fmt_money(rpu.get('income_total_full'))}")
-        st.write(f"- Income already paid till RPU date (Ia): ₹{_fmt_money(rpu.get('income_already_paid'))}")
-        st.write(f"- Income due after RPU date (full-pay reference): ₹{_fmt_money(rpu.get('income_due_full'))}")
-        st.write(f"- **Net Income payable after RPU (SL formula): ₹{_fmt_money(rpu.get('income_payable_after_rpu'))}**")
+                    st.write("Comparison vs expected (GIS BI 2 reference)")
+                    st.json(
+                        {
+                            "rpu_vector_match": cmp_rpu,
+                            "fp_incremental_vector_match": cmp_fp,
+                            "rpu_irr_match": irr_rpu_ok,
+                            "fp_incremental_irr_match": irr_fp_ok,
+                        }
+                    )
 
-        st.write(f"- Maturity (scaled): ₹{_fmt_money(rpu.get('maturity'))}")
-        st.write(f"- Death Benefit (scaled): ₹{_fmt_money(rpu.get('death_scaled'))}")
+                    # Explicit invariants
+                    invariant_timing = all(b == py + 1 for py, b in debug_data.get("fp_income_bucket_map", []))
+                    bucket4 = debug_data.get("decision_bucket", 1)
+                    fp_breakdown = debug_data.get("fp_breakdown", [])
+                    bucket4_row = fp_breakdown[bucket4] if bucket4 < len(fp_breakdown) else {}
+                    invariant_bucket4 = (
+                        abs(bucket4_row.get("premium", 0.0) + 1500000.0) < 1e-3
+                        and abs(bucket4_row.get("surrender", 0.0) + 1610611.0) < 1e-3
+                        and abs(bucket4_row.get("income", 0.0)) < 1e-3
+                    )
+                    maturity_bucket = (extracted.policy_term_years or 0) + 1
+                    maturity_ok = False
+                    if maturity_bucket < len(fp_breakdown):
+                        maturity_ok = abs(fp_breakdown[maturity_bucket].get("maturity", 0.0) - 18000000.0) < 1e-3
 
-        # Notes
-        if outputs.notes:
-            st.divider()
-            st.subheader("Notes")
-            for n in outputs.notes:
-                st.write(f"- {n}")
+                    st.write("Invariants (PASS/FAIL)")
+                    st.json(
+                        {
+                            "timing_shift_income_in_bucket_t_plus_1": invariant_timing,
+                            "bucket4_contains_sv_plus_premium_only": invariant_bucket4,
+                            "maturity_in_bucket_37": maturity_ok,
+                        }
+                    )
 
         # ---------- PDF download ----------
         st.divider()
-        st.subheader("Download one-pager (neutral)")
-        pdf_bytes = render_one_pager(
-            customer_name=(extracted.proposer_name_transient or "Customer"),
-            product_name=extracted.product_name,
-            summary={
-                "Mode": extracted.mode,
-                "PT": extracted.policy_term_years,
-                "PPT": extracted.ppt_years,
-                "BI Date": str(extracted.bi_generation_date),
-                "RCD": str(outputs.rcd),
-                "PTD": str(ptd),
-                "Assumed RPU Date (PTD + Grace)": str(outputs.rpu_date),
-            },
-            fully_paid=fully,
-            rpu=rpu,
-            notes=outputs.notes or [],
-        )
+        st.subheader("Download PDF")
+        pdf_bytes = render_pdf_from_html(html_out)
         st.download_button(
             "Download PDF",
             data=pdf_bytes,
