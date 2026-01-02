@@ -13,6 +13,7 @@ from core.pdf_reader import read_pdf
 from core.renderers.gis_html import render_gis_renewal_html
 from products.registry import detect_product
 from core.output_pdf import render_pdf_from_html
+from core.irr import attach_irrs, build_irr_debug, add_years  # type: ignore[attr-defined]
 
 
 def _sha256_bytes(b: bytes) -> str:
@@ -132,10 +133,12 @@ def _segments_from_income_items(items: list[dict]) -> list[dict]:
         if a == cur_amt and y == cur_end + 1:
             cur_end = y
         else:
-            segs.append({"start_year": cur_start, "end_year": cur_end, "amount": cur_amt, "years": (cur_end-cur_start+1)})
+            segs.append({"start_year": cur_start, "end_year": cur_end, "amount": cur_amt, "years": (cur_end - cur_start + 1)})
             cur_start, cur_end, cur_amt = y, y, a
-    segs.append({"start_year": cur_start, "end_year": cur_end, "amount": cur_amt, "years": (cur_end-cur_start+1)})
+    segs.append({"start_year": cur_start, "end_year": cur_end, "amount": cur_amt, "years": (cur_end - cur_start + 1)})
     return segs
+
+
 def _fmt_money(v: Any) -> str:
     if v is None:
         return "-"
@@ -175,8 +178,60 @@ def _render_income_segments_bullets(segments: list[dict], title: str, scale: flo
             more = f" +{len(items)-8} more" if len(items) > 8 else ""
             st.write(f"- " + "; ".join(parts) + f"{more} ({seg.get('count')} payouts)")
         else:
-            # Fallback
             st.write(f"- {seg}")
+
+
+def _bucket_mapping_rows(breakdown: list[dict], rcd: date, start_bucket: int) -> list[dict]:
+    rows = []
+    for idx in range(start_bucket, len(breakdown)):
+        b = breakdown[idx]
+        net = (b.get("premium", 0.0) or 0.0) + (b.get("income", 0.0) or 0.0) + (b.get("maturity", 0.0) or 0.0) + (b.get("surrender", 0.0) or 0.0)
+        rows.append(
+            {
+                "bucket": idx,
+                "date": str(add_years(rcd, idx - 1)),
+                "premium": b.get("premium", 0.0) or 0.0,
+                "income": b.get("income", 0.0) or 0.0,
+                "maturity": b.get("maturity", 0.0) or 0.0,
+                "surrender": b.get("surrender", 0.0) or 0.0,
+                "net": net,
+            }
+        )
+    return rows
+
+
+def _vector_head_tail(vec: list[float], head: int = 10, tail: int = 5) -> dict:
+    return {
+        "length": len(vec),
+        "head": vec[: min(len(vec), head)],
+        "tail": vec[-tail:] if len(vec) > tail else vec[:],
+    }
+
+
+def _compare_lists(actual: list[float], expected: list[float], tol: float) -> dict:
+    if len(actual) != len(expected):
+        return {"pass": False, "reason": f"length mismatch (got {len(actual)} expected {len(expected)})"}
+    diffs = [abs(a - e) for a, e in zip(actual, expected)]
+    max_diff = max(diffs) if diffs else 0.0
+    return {"pass": all(d <= tol for d in diffs), "reason": f"max diff={max_diff:.4f}"}
+
+
+def _expected_bi2_vectors():
+    expected_rpu_cf = (
+        [-1500000.0, -1500000.0, -1002150.0, 497850.0]
+        + [101832.9545] * 9
+        + [226295.4545] * 23
+        + [4726295.4545]
+    )
+    expected_fp_incr_cf = (
+        [-3110611.0]
+        + [-1002150.0] * 8
+        + [497850.0]
+        + [995700.0] * 23
+        + [18995700.0]
+    )
+    return expected_rpu_cf, expected_fp_incr_cf
+
 
 def main():
     st.set_page_config(page_title="RPU Calculator", layout="centered")
@@ -283,6 +338,108 @@ def main():
 
         st.divider()
         st.subheader("Renewal decision view")
+        # Compute IRRs (needs surrender value)
+        attach_irrs(extracted, outputs, surrender_value or 0.0)
+        html_out = render_gis_renewal_html(extracted, outputs, surrender_value if surrender_value else None)
+        st.components.v1.html(html_out, height=1200, scrolling=True)
+
+        # ---------- IRR DEBUG (GIS) ----------
+        if handler.product_id == "GIS":
+            debug_data = build_irr_debug(extracted, outputs, surrender_value or 0.0)
+            rpu_vec = debug_data.get("rpu_cf", [])
+            fp_vec = debug_data.get("fp_incremental_cf", [])
+
+            st.subheader("Debug: IRR Vectors (GIS)")
+            with st.expander("IRR vectors, mapping, and checks", expanded=True):
+                st.write(
+                    {
+                        "rpu_vector": _vector_head_tail(rpu_vec),
+                        "fp_incremental_vector": _vector_head_tail(fp_vec),
+                        "rpu_irr": debug_data.get("rpu_irr"),
+                        "fp_incremental_irr": debug_data.get("fp_incremental_irr"),
+                    }
+                )
+
+                st.write("First 10 values (RPU / FP incremental)")
+                st.json({"rpu": rpu_vec[:10], "fp_incremental": fp_vec[:10]})
+                st.write("Last 5 values (RPU / FP incremental)")
+                st.json({"rpu": rpu_vec[-5:], "fp_incremental": fp_vec[-5:]})
+                st.write("Full vectors (raw)")
+                st.text_area("RPU cashflow vector", value=json.dumps(rpu_vec, default=str), height=120)
+                st.text_area("FP incremental cashflow vector", value=json.dumps(fp_vec, default=str), height=120)
+
+                st.write("Vector lengths")
+                st.json({"rpu_len": len(rpu_vec), "fp_incremental_len": len(fp_vec)})
+
+                st.write("Download full arrays")
+                st.download_button(
+                    "Download IRR vectors JSON",
+                    data=json.dumps({"rpu_cf": rpu_vec, "fp_incremental_cf": fp_vec}, default=str, indent=2),
+                    file_name="irr_vectors.json",
+                )
+
+                rpu_rows = _bucket_mapping_rows(debug_data.get("rpu_breakdown", []), outputs.rcd, 1)
+                fp_rows = _bucket_mapping_rows(
+                    debug_data.get("fp_breakdown", []), outputs.rcd, debug_data.get("decision_bucket", 1)
+                )
+                st.write("Mapping summary – RPU buckets")
+                st.dataframe(rpu_rows, use_container_width=True)
+                st.write("Mapping summary – FP incremental buckets")
+                st.dataframe(fp_rows, use_container_width=True)
+
+                # Expected comparison (only when matching the specified scenario)
+                is_target_case = (
+                    outputs.rcd == date(2023, 3, 31)
+                    and outputs.ptd == date(2026, 3, 31)
+                    and abs((surrender_value or 0.0) - 1610611.0) < 0.5
+                )
+                if is_target_case:
+                    expected_rpu_cf, expected_fp_incr_cf = _expected_bi2_vectors()
+                    cmp_rpu = _compare_lists(rpu_vec, expected_rpu_cf, 1.0)
+                    cmp_fp = _compare_lists(fp_vec, expected_fp_incr_cf, 1.0)
+                    irr_rpu_ok = (
+                        debug_data.get("rpu_irr") is not None
+                        and abs(debug_data.get("rpu_irr") - 0.04618336) <= 0.0005
+                    )
+                    irr_fp_ok = (
+                        debug_data.get("fp_incremental_irr") is not None
+                        and abs(debug_data.get("fp_incremental_irr") - 0.06558466) <= 0.0005
+                    )
+
+                    st.write("Comparison vs expected (GIS BI 2 reference)")
+                    st.json(
+                        {
+                            "rpu_vector_match": cmp_rpu,
+                            "fp_incremental_vector_match": cmp_fp,
+                            "rpu_irr_match": irr_rpu_ok,
+                            "fp_incremental_irr_match": irr_fp_ok,
+                        }
+                    )
+
+                    # Explicit invariants
+                    invariant_timing = all(b == py + 1 for py, b in debug_data.get("fp_income_bucket_map", []))
+                    bucket4 = debug_data.get("decision_bucket", 1)
+                    fp_breakdown = debug_data.get("fp_breakdown", [])
+                    bucket4_row = fp_breakdown[bucket4] if bucket4 < len(fp_breakdown) else {}
+                    invariant_bucket4 = (
+                        abs(bucket4_row.get("premium", 0.0) + 1500000.0) < 1e-3
+                        and abs(bucket4_row.get("surrender", 0.0) + 1610611.0) < 1e-3
+                        and abs(bucket4_row.get("income", 0.0)) < 1e-3
+                    )
+                    maturity_bucket = (extracted.policy_term_years or 0) + 1
+                    maturity_ok = False
+                    if maturity_bucket < len(fp_breakdown):
+                        maturity_ok = abs(fp_breakdown[maturity_bucket].get("maturity", 0.0) - 18000000.0) < 1e-3
+
+                    st.write("Invariants (PASS/FAIL)")
+                    st.json(
+                        {
+                            "timing_shift_income_in_bucket_t_plus_1": invariant_timing,
+                            "bucket4_contains_sv_plus_premium_only": invariant_bucket4,
+                            "maturity_in_bucket_37": maturity_ok,
+                        }
+                    )
+
         html_out = render_gis_renewal_html(extracted, outputs, surrender_value if surrender_value else None)
         st.components.v1.html(html_out, height=1200, scrolling=True)
 

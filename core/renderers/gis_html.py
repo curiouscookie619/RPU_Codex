@@ -19,6 +19,15 @@ def _fmt_money(v: Any) -> str:
         return str(v)
 
 
+def _fmt_percent(v: Any) -> str:
+    if v is None:
+        return "—"
+    try:
+        return f"{float(v)*100:.1f}%"
+    except Exception:
+        return "—"
+
+
 def _payments_per_year(mode: str) -> int:
     mode_clean = (mode or "Annual").strip()
     months = MODE_MONTHS.get(mode_clean, MODE_MONTHS.get(mode_clean.title(), 12))
@@ -278,6 +287,8 @@ def render_gis_renewal_html(
         "rpu_ratio": _ratio(rpu_get_raw, rpu_give_raw),
         "rpu_extra_class": rpu_extra_class,
         "rpu_note": rpu_note,
+        "rpu_irr": _fmt_percent(getattr(computed, "irr_rpu", None)),
+        "fp_irr": _fmt_percent(getattr(computed, "irr_fp_incremental", None)),
     }
 
     return template.safe_substitute(subs)
