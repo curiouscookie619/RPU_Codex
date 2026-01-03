@@ -178,6 +178,7 @@ def _render_income_segments_bullets(segments: list[dict], title: str, scale: flo
             more = f" +{len(items)-8} more" if len(items) > 8 else ""
             st.write(f"- " + "; ".join(parts) + f"{more} ({seg.get('count')} payouts)")
         else:
+            # Fallback
             st.write(f"- {seg}")
 
 
@@ -249,7 +250,7 @@ def main():
 
     # Use a form to avoid rerun/button non-responsiveness
     with st.form("main_form"):
-        debug = st.checkbox("Debug mode (show what was extracted)", value=True)
+        debug = st.checkbox("Debug mode (show what was extracted)", value=False)
         uploaded = st.file_uploader("Upload BI PDF", type=["pdf"])
         ptd = st.date_input("PTD (Next Premium Due Date)", value=None, format="DD/MM/YYYY")
         surrender_value = st.number_input("Surrender Value (₹)", min_value=0.0, step=10000.0, format="%.2f")
@@ -343,8 +344,8 @@ def main():
         html_out = render_gis_renewal_html(extracted, outputs, surrender_value if surrender_value else None)
         st.components.v1.html(html_out, height=1200, scrolling=True)
 
-        # ---------- IRR DEBUG (GIS) ----------
-        if handler.product_id == "GIS":
+        # ---------- IRR DEBUG (GIS BI 2) ----------
+        if debug and handler.product_id == "GIS":
             debug_data = build_irr_debug(extracted, outputs, surrender_value or 0.0)
             rpu_vec = debug_data.get("rpu_cf", [])
             fp_vec = debug_data.get("fp_incremental_cf", [])
@@ -439,9 +440,6 @@ def main():
                             "maturity_in_bucket_37": maturity_ok,
                         }
                     )
-
-        html_out = render_gis_renewal_html(extracted, outputs, surrender_value if surrender_value else None)
-        st.components.v1.html(html_out, height=1200, scrolling=True)
 
         # ---------- PDF download ----------
         st.divider()

@@ -14,7 +14,24 @@ def _fmt_money(v: Any) -> str:
     if v is None:
         return "—"
     try:
-        return f"{float(v):,.0f}"
+        num = float(v)
+        sign = "-" if num < 0 else ""
+        num = abs(num)
+        s = f"{num:.2f}"
+        int_part, frac_part = s.split(".")
+        if len(int_part) > 3:
+            last3 = int_part[-3:]
+            rest = int_part[:-3]
+            groups = []
+            while len(rest) > 2:
+                groups.insert(0, rest[-2:])
+                rest = rest[:-2]
+            if rest:
+                groups.insert(0, rest)
+            int_part = ",".join(groups + [last3])
+        if frac_part == "00":
+            return f"{sign}{int_part}"
+        return f"{sign}{int_part}.{frac_part}"
     except Exception:
         return str(v)
 
@@ -71,7 +88,6 @@ def _income_rows_from_segments(segments: List[Dict[str, Any]], fallback_total: s
         return ""
 
     rows: List[str] = []
-    # If continuous with few runs, show up to 2-3 lines; otherwise keep minimal.
     used = 0
     for seg in segments:
         kind = seg.get("kind")
@@ -110,9 +126,6 @@ def _income_rows_from_segments(segments: List[Dict[str, Any]], fallback_total: s
 
 
 def _segments_from_income_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Build simplified segments from income items (calendar_year, amount).
-    """
     clean: List[Dict[str, Any]] = []
     for it in items or []:
         yr = it.get("calendar_year")
@@ -172,7 +185,6 @@ def render_gis_renewal_html(
     ptd = computed.ptd
     rcd = computed.rcd
 
-    # Eligibility rule: for RCD < 1 Oct 2024, require ≥2 years of premiums (mode-aware) for RPU payouts
     required_paid = 2 * payments_per_year
     cutoff = date(2024, 10, 1)
     rpu_ineligible = False
@@ -216,7 +228,6 @@ def render_gis_renewal_html(
         except Exception:
             return "—"
 
-    # Income segments
     fp_segments = _segments_from_income_items(fp_items_future)
     fp_income_rows = _income_rows_from_segments(fp_segments, _fmt_money(fp_income_total))
 
@@ -237,9 +248,8 @@ def render_gis_renewal_html(
         rpu_income_rows = "<div class='row'><span>Not eligible for RPU payouts (less than 2 years of premiums before 01-Oct-2024)</span><span class='amount'>—</span></div>"
         rpu_note = "Not eligible for RPU payouts because fewer than 2 policy-year premiums were paid before 01-Oct-2024. All RPU payouts are nil."
 
-    # Surrender
     surrender_present = surrender_value is not None
-    surrender_blocked = rpu_ineligible  # blanket rule: if RPU not possible, surrender not possible
+    surrender_blocked = rpu_ineligible
     surrender_card_style = "" if surrender_present or surrender_blocked else "display:none;"
     surrender_pill_style = "" if surrender_present else "display:none;"
     surrender_diff = None
