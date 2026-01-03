@@ -133,10 +133,12 @@ def _segments_from_income_items(items: list[dict]) -> list[dict]:
         if a == cur_amt and y == cur_end + 1:
             cur_end = y
         else:
-            segs.append({"start_year": cur_start, "end_year": cur_end, "amount": cur_amt, "years": (cur_end-cur_start+1)})
+            segs.append({"start_year": cur_start, "end_year": cur_end, "amount": cur_amt, "years": (cur_end - cur_start + 1)})
             cur_start, cur_end, cur_amt = y, y, a
-    segs.append({"start_year": cur_start, "end_year": cur_end, "amount": cur_amt, "years": (cur_end-cur_start+1)})
+    segs.append({"start_year": cur_start, "end_year": cur_end, "amount": cur_amt, "years": (cur_end - cur_start + 1)})
     return segs
+
+
 def _fmt_money(v: Any) -> str:
     if v is None:
         return "-"
@@ -184,9 +186,7 @@ def _bucket_mapping_rows(breakdown: list[dict], rcd: date, start_bucket: int) ->
     rows = []
     for idx in range(start_bucket, len(breakdown)):
         b = breakdown[idx]
-        net = (b.get("premium", 0.0) or 0.0) + (b.get("income", 0.0) or 0.0) + (b.get("maturity", 0.0) or 0.0) + (
-            b.get("surrender", 0.0) or 0.0
-        )
+        net = (b.get("premium", 0.0) or 0.0) + (b.get("income", 0.0) or 0.0) + (b.get("maturity", 0.0) or 0.0) + (b.get("surrender", 0.0) or 0.0)
         rows.append(
             {
                 "bucket": idx,
@@ -232,6 +232,7 @@ def _expected_bi2_vectors():
         + [18995700.0]
     )
     return expected_rpu_cf, expected_fp_incr_cf
+
 
 def main():
     st.set_page_config(page_title="RPU Calculator", layout="centered")
