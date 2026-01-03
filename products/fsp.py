@@ -14,6 +14,28 @@ def _clean(s: Any) -> str:
     return " ".join(str(s or "").replace("\n", " ").split()).strip()
 
 
+def _sanitize_field(raw: Optional[str]) -> Optional[str]:
+    if raw is None:
+        return None
+    s = _clean(raw)
+    low = s.lower()
+    markers = [
+        "additional",
+        "plan information",
+        "product information",
+        "policy option",
+        "option:",
+        "remarks",
+    ]
+    cut = len(s)
+    for m in markers:
+        idx = low.find(m)
+        if idx > 0:
+            cut = min(cut, idx)
+    s = s[:cut].strip(" -:|,") if cut < len(s) else s
+    return s or None
+
+
 def _sanitize_name(raw: Optional[str]) -> Optional[str]:
     if not raw:
         return None
@@ -56,18 +78,19 @@ def _last_non_null(vals: List[Optional[float]]) -> Optional[float]:
 
 def _parse_first_page_fields(text: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
+
     def grab(pattern: str) -> Optional[str]:
         m = re.search(pattern, text, flags=re.IGNORECASE)
         return _clean(m.group(1)) if m else None
 
-    out["product_name"] = grab(r"Name of the Product:\s*([^\n]+)")
+    out["product_name"] = _sanitize_field(grab(r"Name of the Product:\s*([^\n]+)"))
     out["proposer"] = _sanitize_name(grab(r"Name of the Prospect/Policyholder\s*:\s*([^\n]+)"))
     out["life_assured"] = grab(r"Name of the Life Assured\s*:\s*([^\n]+)")
-    out["mode"] = grab(r"Mode of Payment of Premium\s*:\s*([A-Za-z\- ]+)")
+    out["mode"] = _sanitize_field(grab(r"Mode of Payment of Premium\s*:\s*([A-Za-z\- ]+)"))
     out["policy_term"] = grab(r"PolicyTerm\s*\(in years\)\s*:\s*([0-9]+)")
     out["ppt"] = grab(r"Premium PaymentTerm\s*\(in years\)\s*:\s*([0-9]+)")
-    out["income_start_year"] = grab(r"Income Start Year\s*:\s*([0-9PpTt\+]+)")
-    out["plan_option"] = grab(r"Policy Option\s*[,:\-]*\s*([^\n]+)")
+    out["income_start_year"] = _sanitize_field(grab(r"Income Start Year\s*:\s*([0-9PpTt\+]+)"))
+    out["plan_option"] = _sanitize_field(grab(r"Policy Option\s*[,:\-]*\s*([^\n]+)"))
     out["instalment_wo_gst"] = grab(r"Instalment Premium without GST\s*([0-9,]+)")
     out["sam"] = grab(r"Sum Assured on Maturity\s*Rs\.?\s*([0-9,]+)")
     out["sad"] = grab(r"Sum Assured on Death.*?Rs\.?\s*([0-9,]+)")
@@ -211,12 +234,10 @@ class FSPHandler(ProductHandler):
 
         income_events.sort(key=lambda x: x["policy_year"])
 
-        # Fully paid totals (using SB @ 8% column as instructed)
         total_income_full = sum(e["amount"] for e in income_events)
         maturity_full = _last_non_null(maturity_vals)
         death_full = _last_non_null(death_vals)
 
-        # Buckets for paid / grace / future
         income_paid_full = [e for e in income_events if e["payout_date"] <= ptd]
         income_within_grace = [e for e in income_events if ptd < e["payout_date"] <= rpu_date]
         income_future = [e for e in income_events if e["payout_date"] > rpu_date]
@@ -237,7 +258,6 @@ class FSPHandler(ProductHandler):
                 final_amt = e["amount"]
                 bucket = "within_grace_full"
             else:
-                # Scale guaranteed + CB; pay accrued RB as-is
                 final_amt = (e["gi"] + e["cb"]) * R + e["rb"]
                 bucket = "future_rpu"
                 future_payable_sum += final_amt

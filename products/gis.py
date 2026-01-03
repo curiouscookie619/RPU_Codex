@@ -18,6 +18,28 @@ def _clean_text(s: Any) -> str:
     return " ".join(str(s or "").replace("\n", " ").split()).strip()
 
 
+def _sanitize_field(raw: Optional[str]) -> Optional[str]:
+    if raw is None:
+        return None
+    s = _clean_text(raw)
+    low = s.lower()
+    markers = [
+        "additional",
+        "plan information",
+        "product information",
+        "policy option",
+        "option:",
+        "remarks",
+    ]
+    cut = len(s)
+    for m in markers:
+        idx = low.find(m)
+        if idx > 0:
+            cut = min(cut, idx)
+    s = s[:cut].strip(" -:|,") if cut < len(s) else s
+    return s or None
+
+
 def _sanitize_name(raw: Optional[str]) -> Optional[str]:
     if not raw:
         return None
@@ -282,11 +304,11 @@ class GISHandler(ProductHandler):
                 if k:
                     kv[k] = v
 
-        product_name = kv.get("name of the product") or "Edelweiss Tokio Life- Guaranteed Income STAR"
-        uin = kv.get("unique identification no.") or kv.get("uin")
+        product_name = _sanitize_field(kv.get("name of the product")) or "Edelweiss Tokio Life- Guaranteed Income STAR"
+        uin = _sanitize_field(kv.get("unique identification no.") or kv.get("uin"))
         proposer = _sanitize_name(kv.get("name of the prospect/policyholder"))
 
-        mode = (kv.get("mode of payment of premium") or "Annual").title()
+        mode = (_sanitize_field(kv.get("mode of payment of premium")) or "Annual").title()
 
         pt = _to_int(kv.get("policy term (in years)") or kv.get("policy term")) or 0
         ppt = _to_int(kv.get("premium payment term (in years)") or kv.get("premium payment term")) or 0

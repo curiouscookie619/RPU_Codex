@@ -185,6 +185,7 @@ def render_gis_renewal_html(
     ptd = computed.ptd
     rcd = computed.rcd
 
+    # Eligibility rule: for RCD < 1 Oct 2024, require ≥2 years of premiums (mode-aware) for RPU payouts
     required_paid = 2 * payments_per_year
     cutoff = date(2024, 10, 1)
     rpu_ineligible = False
@@ -228,6 +229,7 @@ def render_gis_renewal_html(
         except Exception:
             return "—"
 
+    # Income segments
     fp_segments = _segments_from_income_items(fp_items_future)
     fp_income_rows = _income_rows_from_segments(fp_segments, _fmt_money(fp_income_total))
 
@@ -248,8 +250,9 @@ def render_gis_renewal_html(
         rpu_income_rows = "<div class='row'><span>Not eligible for RPU payouts (less than 2 years of premiums before 01-Oct-2024)</span><span class='amount'>—</span></div>"
         rpu_note = "Not eligible for RPU payouts because fewer than 2 policy-year premiums were paid before 01-Oct-2024. All RPU payouts are nil."
 
+    # Surrender
     surrender_present = surrender_value is not None
-    surrender_blocked = rpu_ineligible
+    surrender_blocked = rpu_ineligible  # blanket rule: if RPU not possible, surrender not possible
     surrender_card_style = "" if surrender_present or surrender_blocked else "display:none;"
     surrender_pill_style = "" if surrender_present else "display:none;"
     surrender_diff = None
