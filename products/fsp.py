@@ -85,19 +85,20 @@ def _parse_first_page_fields(text: str) -> Dict[str, Any]:
 
     out["product_name"] = _sanitize_field(grab(r"Name of the Product:\s*([^\n]+)"))
     out["proposer"] = _sanitize_name(grab(r"Name of the Prospect/Policyholder\s*:\s*([^\n]+)"))
-    out["life_assured"] = grab(r"Name of the Life Assured\s*:\s*([^\n]+)")
+    out["life_assured"] = grab(r"Name of the Life Assured\s*:\s*([^\n]+)"))
     out["mode"] = _sanitize_field(grab(r"Mode of Payment of Premium\s*:\s*([A-Za-z\- ]+)"))
-    out["policy_term"] = grab(r"PolicyTerm\s*\(in years\)\s*:\s*([0-9]+)")
-    out["ppt"] = grab(r"Premium PaymentTerm\s*\(in years\)\s*:\s*([0-9]+)")
+    out["policy_term"] = grab(r"PolicyTerm\s*\(in years\)\s*:\s*([0-9]+)"))
+    out["ppt"] = grab(r"Premium PaymentTerm\s*\(in years\)\s*:\s*([0-9]+)"))
     out["income_start_year"] = _sanitize_field(grab(r"Income Start Year\s*:\s*([0-9PpTt\+]+)"))
     out["plan_option"] = _sanitize_field(grab(r"Policy Option\s*[,:\-]*\s*([^\n]+)"))
-    out["instalment_wo_gst"] = grab(r"Instalment Premium without GST\s*([0-9,]+)")
-    out["sam"] = grab(r"Sum Assured on Maturity\s*Rs\.?\s*([0-9,]+)")
-    out["sad"] = grab(r"Sum Assured on Death.*?Rs\.?\s*([0-9,]+)")
+    out["instalment_wo_gst"] = grab(r"Instalment Premium without GST\s*([0-9,]+)"))
+    out["sam"] = grab(r"Sum Assured on Maturity\s*Rs\.??\s*([0-9,]+)"))
+    out["sad"] = grab(r"Sum Assured on Death.*?Rs\.??\s*([0-9,]+)"))
+    out["accrual_sb"] = _sanitize_field(grab(r"Accrual of Survival Benefit[s]?\s*:\s*([^\n]+)"))
     return out
 
 
-def _parse_schedule_from_text(text_by_page: List[str]) -> List[Dict[str, Any]]:
+def _parse_schedule_from_text(text_by_page: List[str], policy_term_years: Optional[int] = None) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     header_seen = False
     for page_txt in text_by_page or []:
@@ -114,9 +115,13 @@ def _parse_schedule_from_text(text_by_page: List[str]) -> List[Dict[str, Any]]:
             if len(tokens) != 24 or not tokens[0].isdigit():
                 continue
             nums = [_to_number(t) for t in tokens]
+            py_val = int(nums[0]) if nums[0] is not None else None
+            if policy_term_years is not None and py_val is not None and py_val > policy_term_years:
+                continue
+
             rows.append(
                 {
-                    "policy_year": int(nums[0]) if nums[0] is not None else None,
+                    "policy_year": py_val,
                     "annual_premium": nums[2],
                     "gi": nums[5],  # Guaranteed income / survival benefit component
                     "rb_payout_8": nums[13],
@@ -127,6 +132,78 @@ def _parse_schedule_from_text(text_by_page: List[str]) -> List[Dict[str, Any]]:
                 }
             )
     return rows
+
+
+def _looks_like_column_index_row(row: List[Any]) -> bool:
+    """
+    Detect numeric column-index rows (e.g., '1 2 3 4 5 ... 24') that appear immediately
+    below table headers. These should be skipped when building schedule rows.
+    """
+    clean = [_clean(c) for c in row if c is not None]
+    if not clean:
+        return False
+    if not all(item.isdigit() for item in clean):
+        return False
+    nums = [int(item) for item in clean]
+    return nums == list(range(1, len(nums) + 1))
+
+
+def _parse_schedule_from_tables(parsed: ParsedPDF, policy_term_years: Optional[int] = None) -> Tuple[List[Dict[str, Any]], Optional[bool]]:
+    """
+    Parse schedule from tables (preferred for FSP BIs).
+    Returns (rows, accrual_flag) where accrual_flag is True if any accrual column shows a value.
+    """
+    accrual_flag = False
+    aggregated_rows: Dict[int, Dict[str, Any]] = {}
+    all_tables = parsed.tables_by_page or []
+    for page_tables in all_tables:
+        for tb in page_tables or []:
+            if not tb:
+                continue
+            rows_with_py = []
+            for r in tb:
+                if not r or len(r) < 24:
+                    continue
+                py_text = _clean(r[0])
+                if not py_text.isdigit():
+                    continue
+                if _looks_like_column_index_row(r):
+                    continue
+                rows_with_py.append(r)
+
+            if not rows_with_py:
+                continue
+
+            header_flat = " ".join(_clean(c) for c in (tb[0] or []) if c)
+            header_mentions_policy = "policy" in header_flat.lower()
+
+            for r in rows_with_py:
+                py = int(_clean(r[0]))
+                if policy_term_years is not None and py > policy_term_years:
+                    continue
+                if py in aggregated_rows:
+                    continue
+                # Column positions based on BI table (0-indexed)
+                income_8 = _to_number(r[17])  # Total Survival Benefit @8% (5+14+15)
+                maturity_8 = _to_number(r[21])  # Total Maturity Benefit @8%
+                death_8 = _to_number(r[23])  # Total Death Benefit @8%
+                accrual_val = _clean(r[19]) if len(r) > 19 else ""
+                if accrual_val and accrual_val not in {"-", "—", ""}:
+                    accrual_flag = True
+                # if header missing, still accept as continuation table
+                aggregated_rows[py] = {
+                    "policy_year": py,
+                    "annual_premium": _to_number(r[2]),
+                    "gi": None,  # not used directly for RPU in this option
+                    "rb_payout_8": None,
+                    "cb_8": None,
+                    "sb_total_8": income_8,
+                    "maturity_8": maturity_8,
+                    "death_8": death_8,
+                }
+
+    rows_sorted = [aggregated_rows[k] for k in sorted(aggregated_rows.keys())]
+    return rows_sorted, accrual_flag
 
 
 def _safe_anniversary(d: date, years_to_add: int) -> date:
@@ -159,7 +236,21 @@ class FSPHandler(ProductHandler):
         bi_date = extract_bi_generation_date(page1_text) or date.today()
         meta = _parse_first_page_fields(page1_text)
 
-        schedule_rows = _parse_schedule_from_text(parsed.text_by_page)
+        policy_term_years = int(meta.get("policy_term")) if meta.get("policy_term") else None
+
+        schedule_rows, accrual_flag = _parse_schedule_from_tables(parsed, policy_term_years=policy_term_years)
+        if not schedule_rows:
+            schedule_rows = _parse_schedule_from_text(parsed.text_by_page, policy_term_years=policy_term_years)
+        if accrual_flag is None:
+            accrual_flag = False
+
+        accrual_text = (meta.get("accrual_sb", "") or "").strip().lower()
+        if accrual_text.startswith("y"):
+            accrual_survival_benefits = True
+        elif accrual_text.startswith("n"):
+            accrual_survival_benefits = False
+        else:
+            accrual_survival_benefits = bool(accrual_flag)
 
         return ExtractedFields(
             product_name=meta.get("product_name") or "Edelweiss Life- Flexi-Savings Plan",
@@ -177,6 +268,7 @@ class FSPHandler(ProductHandler):
             income_payout_frequency="Annual",
             income_payout_type="Level",
             sum_assured_on_death=_to_number(meta.get("sad")),
+            accrual_survival_benefits=accrual_survival_benefits,
             schedule_rows=schedule_rows,
         )
 
@@ -198,6 +290,17 @@ class FSPHandler(ProductHandler):
 
         R = (payments_paid / payments_total) if payments_total > 0 else 0.0
         R = max(0.0, min(1.0, R))
+
+        # Blanket RPU blocks
+        rpu_blocked = False
+        rpu_blocked_reason = None
+        cutoff = date(2024, 10, 1)
+        if extracted.accrual_survival_benefits:
+            rpu_blocked = True
+            rpu_blocked_reason = "Accrual of Survival Benefits = Yes; RPU not available."
+        elif (rcd < cutoff) and (payments_paid < (2 * max(1, 12 // max(1, interval_months)))):
+            rpu_blocked = True
+            rpu_blocked_reason = "Less than 2 policy-year premiums were paid before 01-Oct-2024; RPU not available."
 
         income_events: List[Dict[str, Any]] = []
         full_income_vals: List[Optional[float]] = []
@@ -234,10 +337,12 @@ class FSPHandler(ProductHandler):
 
         income_events.sort(key=lambda x: x["policy_year"])
 
+        # Fully paid totals (using SB @ 8% column as instructed)
         total_income_full = sum(e["amount"] for e in income_events)
         maturity_full = _last_non_null(maturity_vals)
         death_full = _last_non_null(death_vals)
 
+        # Buckets for paid / grace / future
         income_paid_full = [e for e in income_events if e["payout_date"] <= ptd]
         income_within_grace = [e for e in income_events if ptd < e["payout_date"] <= rpu_date]
         income_future = [e for e in income_events if e["payout_date"] > rpu_date]
@@ -258,7 +363,11 @@ class FSPHandler(ProductHandler):
                 final_amt = e["amount"]
                 bucket = "within_grace_full"
             else:
-                final_amt = (e["gi"] + e["cb"]) * R + e["rb"]
+                if rpu_blocked:
+                    final_amt = 0.0
+                else:
+                    # Scale SB @ 8% (includes guaranteed + bonuses) by RPU factor
+                    final_amt = e["amount"] * R
                 bucket = "future_rpu"
                 future_payable_sum += final_amt
                 income_items_remaining_full.append(
@@ -282,6 +391,9 @@ class FSPHandler(ProductHandler):
             )
 
         rpu_income_total = round(future_payable_sum, 2)
+        if rpu_blocked:
+            rpu_income_total = 0.0
+            maturity_full = None
 
         fully_paid = {
             "instalment_premium_without_gst": extracted.annualized_premium_excl_tax,
@@ -315,6 +427,8 @@ class FSPHandler(ProductHandler):
                 "interval_months": int(interval_months),
                 "grace_days": grace_days,
             },
+            "rpu_blocked": rpu_blocked,
+            "rpu_blocked_reason": rpu_blocked_reason,
         }
 
         notes = [
@@ -323,6 +437,8 @@ class FSPHandler(ProductHandler):
             "RPU factor = months paid / months payable. Survival benefits post RPU scale guaranteed + cash bonus by the factor; accrued bonuses are taken as-is.",
             "Survival benefit amounts use SB @ 8% (includes guaranteed and non-guaranteed, per BI). Maturity and death values come from the BI (incl. terminal bonus), scaled by the RPU factor.",
         ]
+        if rpu_blocked_reason:
+            notes.append(rpu_blocked_reason)
 
         return ComputedOutputs(
             rcd=rcd,

@@ -11,7 +11,7 @@ from core.db import init_db, try_get_conn
 from core.event_logger import log_event
 from core.pdf_reader import read_pdf
 from core.renderers.gis_html import render_gis_renewal_html
-from products.registry import detect_product
+from products.registry import detect_product, ProductNotConfigured
 from core.output_pdf import render_pdf_from_html
 from core.irr import attach_irrs, build_irr_debug, add_years  # type: ignore[attr-defined]
 
@@ -253,7 +253,12 @@ def main():
         debug = st.checkbox("Debug mode (show what was extracted)", value=False)
         uploaded = st.file_uploader("Upload BI PDF", type=["pdf"])
         ptd = st.date_input("PTD (Next Premium Due Date)", value=None, format="DD/MM/YYYY")
-        surrender_value = st.number_input("Surrender Value (₹)", min_value=0.0, step=10000.0, format="%.2f")
+        surrender_value_raw = st.text_input(
+            "Surrender Value (₹)",
+            value="",
+            placeholder="Required for IRR",
+            help="Enter surrender value to compute IRRs; leave blank to skip IRR.",
+        )
         submitted = st.form_submit_button("Generate")
 
     if not submitted:
@@ -267,6 +272,15 @@ def main():
     file_hash = _sha256_bytes(file_bytes)
 
     log_event("pdf_uploaded", session_id, {"file_hash": file_hash, "size_bytes": len(file_bytes), "device": "unknown"})
+
+    # Parse surrender value (optional, but required for IRR)
+    surrender_value = None
+    if surrender_value_raw.strip():
+        try:
+            surrender_value = float(surrender_value_raw.replace(",", "").strip())
+        except Exception:
+            st.error("Please enter a valid numeric surrender value or leave it blank to skip IRR.")
+            return
 
     try:
         # Cached parsing for speed (especially repeated attempts)
@@ -339,13 +353,17 @@ def main():
 
         st.divider()
         st.subheader("Renewal decision view")
-        # Compute IRRs (needs surrender value)
-        attach_irrs(extracted, outputs, surrender_value or 0.0)
-        html_out = render_gis_renewal_html(extracted, outputs, surrender_value if surrender_value else None)
+        # Compute IRRs only when surrender value is provided
+        if surrender_value is not None:
+            attach_irrs(extracted, outputs, surrender_value)
+        else:
+            outputs.irr_rpu = None
+            outputs.irr_fp_incremental = None
+        html_out = render_gis_renewal_html(extracted, outputs, surrender_value)
         st.components.v1.html(html_out, height=1200, scrolling=True)
 
         # ---------- IRR DEBUG (GIS BI 2) ----------
-        if debug and handler.product_id == "GIS":
+        if debug and handler.product_id == "GIS" and surrender_value is not None:
             debug_data = build_irr_debug(extracted, outputs, surrender_value or 0.0)
             rpu_vec = debug_data.get("rpu_cf", [])
             fp_vec = debug_data.get("fp_incremental_cf", [])
@@ -452,6 +470,9 @@ def main():
             mime="application/pdf",
         )
 
+    except ProductNotConfigured as e:
+        st.error(str(e))
+        log_event("product_not_configured", session_id, {"error": str(e)})
     except Exception as e:
         st.error(f"Failed: {e}")
         log_event("error", session_id, {"error": str(e)})

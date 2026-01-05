@@ -17,6 +17,7 @@ def _fmt_money(v: Any) -> str:
         num = float(v)
         sign = "-" if num < 0 else ""
         num = abs(num)
+        # keep two decimals for paise-level values; strip if .00
         s = f"{num:.2f}"
         int_part, frac_part = s.split(".")
         if len(int_part) > 3:
@@ -88,6 +89,7 @@ def _income_rows_from_segments(segments: List[Dict[str, Any]], fallback_total: s
         return ""
 
     rows: List[str] = []
+    # If continuous with few runs, show up to 2-3 lines; otherwise keep minimal.
     used = 0
     for seg in segments:
         kind = seg.get("kind")
@@ -126,6 +128,9 @@ def _income_rows_from_segments(segments: List[Dict[str, Any]], fallback_total: s
 
 
 def _segments_from_income_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Build simplified segments from income items (calendar_year, amount).
+    """
     clean: List[Dict[str, Any]] = []
     for it in items or []:
         yr = it.get("calendar_year")
