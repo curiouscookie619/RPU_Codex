@@ -432,7 +432,7 @@ class FSPHandler(ProductHandler):
         }
 
         notes = [
-            "Premiums are assumed at the start of the policy year; payouts are at the end of the policy year.",
+            "Premiums are assumed at the start of the policy year; payouts at the end of the policy year.",
             "Grace: 30 days (non-monthly), 15 days (monthly).",
             "RPU factor = months paid / months payable. Survival benefits post RPU scale guaranteed + cash bonus by the factor; accrued bonuses are taken as-is.",
             "Survival benefit amounts use SB @ 8% (includes guaranteed and non-guaranteed, per BI). Maturity and death values come from the BI (incl. terminal bonus), scaled by the RPU factor.",

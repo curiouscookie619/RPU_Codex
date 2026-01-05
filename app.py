@@ -186,7 +186,9 @@ def _bucket_mapping_rows(breakdown: list[dict], rcd: date, start_bucket: int) ->
     rows = []
     for idx in range(start_bucket, len(breakdown)):
         b = breakdown[idx]
-        net = (b.get("premium", 0.0) or 0.0) + (b.get("income", 0.0) or 0.0) + (b.get("maturity", 0.0) or 0.0) + (b.get("surrender", 0.0) or 0.0)
+        net = (b.get("premium", 0.0) or 0.0) + (b.get("income", 0.0) or 0.0) + (b.get("maturity", 0.0) or 0.0) + (
+            b.get("surrender", 0.0) or 0.0
+        )
         rows.append(
             {
                 "bucket": idx,
@@ -233,7 +235,6 @@ def _expected_bi2_vectors():
     )
     return expected_rpu_cf, expected_fp_incr_cf
 
-
 def main():
     st.set_page_config(page_title="RPU Calculator", layout="centered")
 
@@ -253,12 +254,7 @@ def main():
         debug = st.checkbox("Debug mode (show what was extracted)", value=False)
         uploaded = st.file_uploader("Upload BI PDF", type=["pdf"])
         ptd = st.date_input("PTD (Next Premium Due Date)", value=None, format="DD/MM/YYYY")
-        surrender_value_raw = st.text_input(
-            "Surrender Value (₹)",
-            value="",
-            placeholder="Required for IRR",
-            help="Enter surrender value to compute IRRs; leave blank to skip IRR.",
-        )
+        surrender_value_raw = st.text_input("Surrender Value (₹)", value="", placeholder="Required for IRR", help="Enter surrender value to compute IRRs; leave blank to skip IRR.")
         submitted = st.form_submit_button("Generate")
 
     if not submitted:
@@ -292,6 +288,16 @@ def main():
 
         extracted = handler.extract(parsed)
         outputs = handler.calculate(extracted, ptd)
+
+        log_event(
+            "bi_metadata",
+            session_id,
+            {
+                "product_id": handler.product_id,
+                "policyholder_name": (extracted.proposer_name_transient or "").strip() or None,
+                "annualized_premium_excl_tax": extracted.annualized_premium_excl_tax,
+            },
+        )
 
         extracted_dump = extracted.model_dump(mode="json")
         outputs_dump = outputs.model_dump(mode="json")
