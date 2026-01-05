@@ -39,6 +39,8 @@ class ExtractedFields(BaseModel):
 
     sum_assured_on_death: Optional[float] = None
 
+    accrual_survival_benefits: Optional[bool] = None
+
     schedule_rows: List[Dict[str, Any]] = Field(default_factory=list)  # normalized schedule per policy year
 
 
@@ -55,3 +57,5 @@ class ComputedOutputs(BaseModel):
     fully_paid: Dict[str, Any]
     reduced_paid_up: Dict[str, Any]
     notes: List[str] = Field(default_factory=list)
+    irr_rpu: Optional[float] = None
+    irr_fp_incremental: Optional[float] = None
