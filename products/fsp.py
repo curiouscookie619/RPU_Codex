@@ -85,15 +85,15 @@ def _parse_first_page_fields(text: str) -> Dict[str, Any]:
 
     out["product_name"] = _sanitize_field(grab(r"Name of the Product:\s*([^\n]+)"))
     out["proposer"] = _sanitize_name(grab(r"Name of the Prospect/Policyholder\s*:\s*([^\n]+)"))
-    out["life_assured"] = grab(r"Name of the Life Assured\s*:\s*([^\n]+)"))
+    out["life_assured"] = grab(r"Name of the Life Assured\s*:\s*([^\n]+)")
     out["mode"] = _sanitize_field(grab(r"Mode of Payment of Premium\s*:\s*([A-Za-z\- ]+)"))
-    out["policy_term"] = grab(r"PolicyTerm\s*\(in years\)\s*:\s*([0-9]+)"))
-    out["ppt"] = grab(r"Premium PaymentTerm\s*\(in years\)\s*:\s*([0-9]+)"))
+    out["policy_term"] = grab(r"PolicyTerm\s*\(in years\)\s*:\s*([0-9]+)")
+    out["ppt"] = grab(r"Premium PaymentTerm\s*\(in years\)\s*:\s*([0-9]+)")
     out["income_start_year"] = _sanitize_field(grab(r"Income Start Year\s*:\s*([0-9PpTt\+]+)"))
     out["plan_option"] = _sanitize_field(grab(r"Policy Option\s*[,:\-]*\s*([^\n]+)"))
-    out["instalment_wo_gst"] = grab(r"Instalment Premium without GST\s*([0-9,]+)"))
-    out["sam"] = grab(r"Sum Assured on Maturity\s*Rs\.??\s*([0-9,]+)"))
-    out["sad"] = grab(r"Sum Assured on Death.*?Rs\.??\s*([0-9,]+)"))
+    out["instalment_wo_gst"] = grab(r"Instalment Premium without GST\s*([0-9,]+)")
+    out["sam"] = grab(r"Sum Assured on Maturity\s*Rs\.??\s*([0-9,]+)")
+    out["sad"] = grab(r"Sum Assured on Death.*?Rs\.??\s*([0-9,]+)")
     out["accrual_sb"] = _sanitize_field(grab(r"Accrual of Survival Benefit[s]?\s*:\s*([^\n]+)"))
     return out
 
@@ -432,7 +432,7 @@ class FSPHandler(ProductHandler):
         }
 
         notes = [
-            "Premiums are assumed at the start of the policy year; payouts at the end of the policy year.",
+            "Premiums are assumed at the start of the policy year; payouts are at the end of the policy year.",
             "Grace: 30 days (non-monthly), 15 days (monthly).",
             "RPU factor = months paid / months payable. Survival benefits post RPU scale guaranteed + cash bonus by the factor; accrued bonuses are taken as-is.",
             "Survival benefit amounts use SB @ 8% (includes guaranteed and non-guaranteed, per BI). Maturity and death values come from the BI (incl. terminal bonus), scaled by the RPU factor.",
