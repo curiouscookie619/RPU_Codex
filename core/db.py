@@ -46,6 +46,18 @@ def init_db():
 
         cur.execute(
             """
+            CREATE TABLE IF NOT EXISTS app_events (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              ts_utc TIMESTAMPTZ NOT NULL DEFAULT now(),
+              session_id TEXT NOT NULL,
+              event_name TEXT NOT NULL,
+              properties JSONB NOT NULL DEFAULT '{}'::jsonb
+            );
+            """
+        )
+
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS cases (
               case_id TEXT PRIMARY KEY,
               session_id TEXT NOT NULL,

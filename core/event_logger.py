@@ -28,4 +28,11 @@ def log_event(event_name: str, session_id: str, properties: Dict[str, Any], case
             """,
             (session_id, case_id, event_name, json.dumps(properties, default=str)),
         )
+        cur.execute(
+            """
+            INSERT INTO app_events(session_id, event_name, properties)
+            VALUES (%s, %s, %s::jsonb)
+            """,
+            (session_id, event_name, json.dumps(properties, default=str)),
+        )
         conn.commit()
