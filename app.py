@@ -10,7 +10,7 @@ import re
 import time
 import uuid
 import zipfile
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, Optional
 
 import streamlit as st
@@ -248,8 +248,13 @@ def _parse_ptd(value: str) -> date:
     text = (value or "").strip()
     if not text:
         raise ValueError("PTD is required")
+    if re.fullmatch(r"\d+(\.\d+)?", text):
+        days = int(float(text))
+        return (datetime(1899, 12, 30) + timedelta(days=days)).date()
     if "/" in text:
         return datetime.strptime(text, "%d/%m/%Y").date()
+    if "-" in text:
+        return datetime.strptime(text, "%d-%m-%Y").date()
     return datetime.strptime(text, "%Y-%m-%d").date()
 
 
