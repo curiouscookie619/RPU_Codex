@@ -1,6 +1,5 @@
 [server]
-baseUrlPath = ""
-enableXsrfProtection = true
+enableXsrfProtection = false
 enableCORS = false
 maxUploadSize = 200
 address = "0.0.0.0"
