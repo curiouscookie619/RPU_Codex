@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional
 from psycopg2.extras import Json
-from .db import get_conn
+from .db import try_get_conn
 
 
 def log_event(event_name: str, session_id: str, properties: Dict[str, Any], case_id: Optional[str] = None) -> None:
@@ -16,12 +16,23 @@ def log_event(event_name: str, session_id: str, properties: Dict[str, Any], case
     }
     print(json.dumps(payload, default=str))
 
-    with get_conn() as conn, conn.cursor() as cur:
+    conn = try_get_conn()
+    if conn is None:
+        return
+
+    with conn, conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO event_log(session_id, case_id, event_name, properties)
             VALUES (%s, %s, %s, %s::jsonb)
             """,
             (session_id, case_id, event_name, json.dumps(properties, default=str)),
+        )
+        cur.execute(
+            """
+            INSERT INTO app_events(session_id, event_name, properties)
+            VALUES (%s, %s, %s::jsonb)
+            """,
+            (session_id, event_name, json.dumps(properties, default=str)),
         )
         conn.commit()
