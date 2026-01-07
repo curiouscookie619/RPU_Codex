@@ -40,11 +40,13 @@ def read_pdf(file_bytes: bytes) -> ParsedPDF:
         if not page_text:
             return False
         lines = [ln.strip() for ln in page_text.splitlines() if ln.strip()]
-        # count lines that start with: <age> <policy_year> ...
-        pat = re.compile(r"^\d{1,3}\s+\d{1,3}\s+[-–—]|^\d{1,3}\s+\d{1,3}\s+\d", re.I)
+        pat_start = re.compile(r"^\d{1,3}\b")
         hits = 0
         for ln in lines[:120]:
-            if pat.search(ln):
+            if not pat_start.search(ln):
+                continue
+            num_tokens = re.findall(r"[0-9][0-9,]*", ln)
+            if len(num_tokens) >= 3:
                 hits += 1
             if hits >= 5:
                 return True
