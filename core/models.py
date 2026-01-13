@@ -25,6 +25,7 @@ class ExtractedFields(BaseModel):
     proposer_name_transient: Optional[str] = None  # DO NOT persist
     life_assured_age: Optional[int] = None
     life_assured_gender: Optional[str] = None
+    plan_option: Optional[str] = None
 
     mode: str  # Annual/Half-yearly/Quarterly/Monthly
     policy_term_years: int
@@ -38,6 +39,8 @@ class ExtractedFields(BaseModel):
     income_payout_type: Optional[str] = None  # Increasing/Level
 
     sum_assured_on_death: Optional[float] = None
+
+    accrual_survival_benefits: Optional[bool] = None
 
     schedule_rows: List[Dict[str, Any]] = Field(default_factory=list)  # normalized schedule per policy year
 
@@ -55,3 +58,5 @@ class ComputedOutputs(BaseModel):
     fully_paid: Dict[str, Any]
     reduced_paid_up: Dict[str, Any]
     notes: List[str] = Field(default_factory=list)
+    irr_rpu: Optional[float] = None
+    irr_fp_incremental: Optional[float] = None
