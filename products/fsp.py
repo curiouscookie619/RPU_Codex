@@ -99,7 +99,21 @@ def _parse_first_page_fields(text: str) -> Dict[str, Any]:
 
 
 def _normalize_plan_option(value: Optional[str]) -> str:
-    return _clean(value).lower()
+    cleaned = _clean(value).lower()
+    return re.sub(r"[^a-z0-9]+", " ", cleaned).strip()
+
+
+def _is_flexi_income_option(plan_option: Optional[str]) -> bool:
+    normalized = _normalize_plan_option(plan_option)
+    if not normalized:
+        return False
+    if "flexi income" not in normalized:
+        return False
+    if "pro" in normalized:
+        return False
+    if "large sum" in normalized:
+        return False
+    return True
 
 
 def _ensure_maturity_value(
@@ -300,8 +314,7 @@ class FSPHandler(ProductHandler):
         )
 
     def calculate(self, extracted: ExtractedFields, ptd: date) -> ComputedOutputs:
-        plan_option = _normalize_plan_option(extracted.plan_option)
-        if "flexi income" not in plan_option:
+        if not _is_flexi_income_option(extracted.plan_option):
             raise ValueError("Flexi-Savings Plan is supported only for the Flexi Income option.")
         rcd, rpu_date, grace_days = derive_rcd_and_rpu_dates(
             bi_date=extracted.bi_generation_date,
