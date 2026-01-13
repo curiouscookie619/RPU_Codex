@@ -281,7 +281,10 @@ def _policy_number_from_filename(filename: str) -> Optional[str]:
 
 
 def _read_batch_csv(csv_bytes: bytes) -> dict[str, dict[str, str]]:
-    text = csv_bytes.decode("utf-8-sig")
+    try:
+        text = csv_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = csv_bytes.decode("latin-1")
     reader = csv.reader(io.StringIO(text))
     header = next(reader, None)
     expected = ["policy_number", "ptd", "surrender_value"]
@@ -425,8 +428,8 @@ def _run_single_mode(session_id: str) -> None:
 
         st.divider()
         st.subheader("Renewal decision view")
-        # Compute IRRs only when surrender value is provided
-        if surrender_value is not None:
+        # Compute IRRs only when surrender value is provided and > 0
+        if surrender_value is not None and surrender_value > 0:
             attach_irrs(extracted, outputs, surrender_value)
         else:
             outputs.irr_rpu = None
@@ -799,7 +802,11 @@ def _run_batch_mode(session_id: str) -> None:
                     handler, conf, dbg = detect_product(parsed)
                     extracted = handler.extract(parsed)
                     outputs_obj = handler.calculate(extracted, ptd_value)
-                    attach_irrs(extracted, outputs_obj, surrender_value)
+                    if surrender_value > 0:
+                        attach_irrs(extracted, outputs_obj, surrender_value)
+                    else:
+                        outputs_obj.irr_rpu = None
+                        outputs_obj.irr_fp_incremental = None
                     log_event(
                         "compute_success",
                         session_id,

@@ -25,6 +25,7 @@ class ExtractedFields(BaseModel):
     proposer_name_transient: Optional[str] = None  # DO NOT persist
     life_assured_age: Optional[int] = None
     life_assured_gender: Optional[str] = None
+    plan_option: Optional[str] = None
 
     mode: str  # Annual/Half-yearly/Quarterly/Monthly
     policy_term_years: int

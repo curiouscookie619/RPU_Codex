@@ -98,6 +98,29 @@ def _parse_first_page_fields(text: str) -> Dict[str, Any]:
     return out
 
 
+def _normalize_plan_option(value: Optional[str]) -> str:
+    return _clean(value).lower()
+
+
+def _ensure_maturity_value(
+    schedule_rows: List[Dict[str, Any]],
+    policy_term_years: Optional[int],
+    maturity_value: Optional[float],
+) -> None:
+    if maturity_value is None:
+        return
+    if not schedule_rows:
+        return
+    maturity_present = any(_to_number(r.get("maturity_8")) is not None for r in schedule_rows)
+    if maturity_present:
+        return
+    target_year = policy_term_years or max((r.get("policy_year") or 0) for r in schedule_rows)
+    for row in schedule_rows:
+        if row.get("policy_year") == target_year:
+            row["maturity_8"] = maturity_value
+            return
+
+
 def _parse_schedule_from_text(text_by_page: List[str], policy_term_years: Optional[int] = None) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     header_seen = False
@@ -244,6 +267,9 @@ class FSPHandler(ProductHandler):
         if accrual_flag is None:
             accrual_flag = False
 
+        maturity_value = _to_number(meta.get("sam"))
+        _ensure_maturity_value(schedule_rows, policy_term_years, maturity_value)
+
         accrual_text = (meta.get("accrual_sb", "") or "").strip().lower()
         if accrual_text.startswith("y"):
             accrual_survival_benefits = True
@@ -259,6 +285,7 @@ class FSPHandler(ProductHandler):
             proposer_name_transient=meta.get("proposer"),
             life_assured_age=None,
             life_assured_gender=None,
+            plan_option=meta.get("plan_option"),
             mode=(meta.get("mode") or "Annual").title(),
             policy_term_years=int(meta.get("policy_term") or 0),
             ppt_years=int(meta.get("ppt") or 0),
@@ -273,6 +300,9 @@ class FSPHandler(ProductHandler):
         )
 
     def calculate(self, extracted: ExtractedFields, ptd: date) -> ComputedOutputs:
+        plan_option = _normalize_plan_option(extracted.plan_option)
+        if "flexi income" not in plan_option:
+            raise ValueError("Flexi-Savings Plan is supported only for the Flexi Income option.")
         rcd, rpu_date, grace_days = derive_rcd_and_rpu_dates(
             bi_date=extracted.bi_generation_date,
             ptd=ptd,
@@ -341,6 +371,8 @@ class FSPHandler(ProductHandler):
         total_income_full = sum(e["amount"] for e in income_events)
         maturity_full = _last_non_null(maturity_vals)
         death_full = _last_non_null(death_vals)
+        if maturity_full is None:
+            raise ValueError("Maturity benefit not found in schedule.")
 
         # Buckets for paid / grace / future
         income_paid_full = [e for e in income_events if e["payout_date"] <= ptd]
