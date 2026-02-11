@@ -39,6 +39,9 @@ class ExtractedFields(BaseModel):
     income_payout_type: Optional[str] = None  # Increasing/Level
 
     sum_assured_on_death: Optional[float] = None
+    sum_assured_on_maturity: Optional[float] = None
+
+    accrual_survival_benefits: Optional[bool] = None
 
     accrual_survival_benefits: Optional[bool] = None
 

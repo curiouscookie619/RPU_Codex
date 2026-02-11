@@ -135,6 +135,31 @@ def _ensure_maturity_value(
             return
 
 
+def _extract_sam_from_tables(parsed: ParsedPDF) -> Optional[float]:
+    """Extract Sum Assured on Maturity from policy details tables."""
+    pattern = re.compile(r"sum\s+assured\s+on\s+maturity", flags=re.IGNORECASE)
+    for page_tables in (parsed.tables_by_page or []):
+        for tb in (page_tables or []):
+            for row in (tb or []):
+                if not row:
+                    continue
+                cells = [_clean(c) for c in row]
+                for idx, cell in enumerate(cells):
+                    if not pattern.search(cell):
+                        continue
+                    # look rightward first (label/value row layout)
+                    for nxt in cells[idx + 1 :]:
+                        val = _to_number(nxt)
+                        if val is not None:
+                            return val
+                    # then fallback: scan entire row for the last numeric value
+                    nums = [_to_number(c) for c in cells]
+                    nums = [n for n in nums if n is not None]
+                    if nums:
+                        return nums[-1]
+    return None
+
+
 def _parse_schedule_from_text(text_by_page: List[str], policy_term_years: Optional[int] = None) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     header_seen = False
@@ -282,6 +307,8 @@ class FSPHandler(ProductHandler):
             accrual_flag = False
 
         maturity_value = _to_number(meta.get("sam"))
+        if maturity_value is None:
+            maturity_value = _extract_sam_from_tables(parsed)
         _ensure_maturity_value(schedule_rows, policy_term_years, maturity_value)
 
         accrual_text = (meta.get("accrual_sb", "") or "").strip().lower()
@@ -309,6 +336,7 @@ class FSPHandler(ProductHandler):
             income_payout_frequency="Annual",
             income_payout_type="Level",
             sum_assured_on_death=_to_number(meta.get("sad")),
+            sum_assured_on_maturity=maturity_value,
             accrual_survival_benefits=accrual_survival_benefits,
             schedule_rows=schedule_rows,
         )
@@ -384,8 +412,11 @@ class FSPHandler(ProductHandler):
         total_income_full = sum(e["amount"] for e in income_events)
         maturity_full = _last_non_null(maturity_vals)
         death_full = _last_non_null(death_vals)
-        if maturity_full is None:
-            raise ValueError("Maturity benefit not found in schedule.")
+
+        sam_value = extracted.sum_assured_on_maturity
+        if sam_value is None:
+            raise ValueError("Sum Assured on Maturity (SAM) not found in BI.")
+        rpu_maturity_from_sam = float(sam_value) * R
 
         # Buckets for paid / grace / future
         income_paid_full = [e for e in income_events if e["payout_date"] <= ptd]
@@ -439,6 +470,7 @@ class FSPHandler(ProductHandler):
         if rpu_blocked:
             rpu_income_total = 0.0
             maturity_full = None
+            rpu_maturity_from_sam = 0.0
 
         fully_paid = {
             "instalment_premium_without_gst": extracted.annualized_premium_excl_tax,
@@ -463,7 +495,7 @@ class FSPHandler(ProductHandler):
             "income_future_count": len(income_future),
             "excess_paid_income": 0.0,
             "deduction_per_remaining": 0.0,
-            "maturity": (float(maturity_full) * R) if maturity_full is not None else None,
+            "maturity": float(rpu_maturity_from_sam),
             "death_scaled": (float(death_full) * R) if death_full is not None else None,
             "debug": {
                 "payments_paid": int(payments_paid),
