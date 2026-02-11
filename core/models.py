@@ -43,6 +43,8 @@ class ExtractedFields(BaseModel):
 
     accrual_survival_benefits: Optional[bool] = None
 
+    accrual_survival_benefits: Optional[bool] = None
+
     schedule_rows: List[Dict[str, Any]] = Field(default_factory=list)  # normalized schedule per policy year
 
 

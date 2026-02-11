@@ -141,10 +141,12 @@ def _segments_from_income_items(items: list[dict]) -> list[dict]:
         if a == cur_amt and y == cur_end + 1:
             cur_end = y
         else:
-            segs.append({"start_year": cur_start, "end_year": cur_end, "amount": cur_amt, "years": (cur_end-cur_start+1)})
+            segs.append({"start_year": cur_start, "end_year": cur_end, "amount": cur_amt, "years": (cur_end - cur_start + 1)})
             cur_start, cur_end, cur_amt = y, y, a
-    segs.append({"start_year": cur_start, "end_year": cur_end, "amount": cur_amt, "years": (cur_end-cur_start+1)})
+    segs.append({"start_year": cur_start, "end_year": cur_end, "amount": cur_amt, "years": (cur_end - cur_start + 1)})
     return segs
+
+
 def _fmt_money(v: Any) -> str:
     if v is None:
         return "-"
