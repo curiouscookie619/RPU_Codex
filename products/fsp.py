@@ -212,8 +212,6 @@ def _validate_income_pattern(schedule_rows: List[Dict[str, Any]], isy: int, ppt:
             raise ValueError("Invalid SB@8 pattern for FSP: second income slab is not constant.")
 
 
-
-
 def _find_col_index(header_cells: List[str], predicates: List[Callable[[str], bool]]) -> Optional[int]:
     for idx, cell in enumerate(header_cells):
         text = _clean(cell).lower()
