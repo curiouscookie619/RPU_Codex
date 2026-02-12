@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.date_logic import MODE_MONTHS, derive_rcd_and_rpu_dates
 from core.models import ComputedOutputs, ExtractedFields, ParsedPDF
@@ -160,6 +160,68 @@ def _extract_sam_from_tables(parsed: ParsedPDF) -> Optional[float]:
     return None
 
 
+def _parse_income_start_year(value: Optional[str]) -> Optional[int]:
+    text = _clean(value)
+    m = re.search(r"(\d+)", text)
+    if not m:
+        return None
+    return int(m.group(1))
+
+
+def _validate_income_pattern(schedule_rows: List[Dict[str, Any]], isy: int, ppt: int, pt: int) -> None:
+    """Validate FSP Flexi Income SB@8 values follow the expected one/two-slab structure."""
+    if not schedule_rows or isy < 1 or ppt < 1 or pt < 1:
+        return
+
+    by_year: Dict[int, float] = {}
+    for row in schedule_rows:
+        py = row.get("policy_year")
+        if py is None:
+            continue
+        sb = _to_number(row.get("sb_total_8"))
+        by_year[int(py)] = float(sb) if sb is not None else 0.0
+
+    if not by_year:
+        return
+
+    for y in range(1, min(isy, pt + 1)):
+        if abs(by_year.get(y, 0.0)) > 1e-6:
+            raise ValueError(f"Invalid SB@8 pattern for FSP: non-zero income before Income Start Year (PY {y}).")
+
+    positives = sorted({round(v, 2) for y, v in by_year.items() if 1 <= y <= pt and v > 0})
+    if len(positives) > 2:
+        raise ValueError("Invalid SB@8 pattern for FSP: more than two positive income slabs detected.")
+
+    slab1_start = isy
+    slab1_end = min(ppt, pt)
+    slab2_start = max(ppt + 1, isy)
+    slab2_end = pt
+
+    def _segment_unique(start: int, end: int) -> List[float]:
+        vals = [round(by_year.get(y, 0.0), 2) for y in range(start, end + 1) if by_year.get(y, 0.0) > 0]
+        return sorted(set(vals))
+
+    if slab1_start <= slab1_end:
+        u1 = _segment_unique(slab1_start, slab1_end)
+        if len(u1) > 1:
+            raise ValueError("Invalid SB@8 pattern for FSP: first income slab is not constant.")
+
+    if slab2_start <= slab2_end:
+        u2 = _segment_unique(slab2_start, slab2_end)
+        if len(u2) > 1:
+            raise ValueError("Invalid SB@8 pattern for FSP: second income slab is not constant.")
+
+
+def _find_col_index(header_cells: List[str], predicates: List[Callable[[str], bool]]) -> Optional[int]:
+    for idx, cell in enumerate(header_cells):
+        text = _clean(cell).lower()
+        if not text:
+            continue
+        if all(pred(text) for pred in predicates):
+            return idx
+    return None
+
+
 def _parse_schedule_from_text(text_by_page: List[str], policy_term_years: Optional[int] = None) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     header_seen = False
@@ -218,13 +280,56 @@ def _parse_schedule_from_tables(parsed: ParsedPDF, policy_term_years: Optional[i
     accrual_flag = False
     aggregated_rows: Dict[int, Dict[str, Any]] = {}
     all_tables = parsed.tables_by_page or []
+
+    # Remember detected column indexes so continuation pages with broken headers still parse correctly.
+    sb_col_idx: Optional[int] = None
+    maturity_col_idx: Optional[int] = None
+    death_col_idx: Optional[int] = None
+    accrual_col_idx: Optional[int] = None
+
     for page_tables in all_tables:
         for tb in page_tables or []:
             if not tb:
                 continue
+
+            # Build stitched header text per column from the top rows to handle page-break header splits.
+            max_cols = max(len(r or []) for r in tb)
+            stitched_headers: List[str] = []
+            for col in range(max_cols):
+                parts = []
+                for hr in range(min(5, len(tb))):
+                    row = tb[hr] or []
+                    if col < len(row):
+                        cell = _clean(row[col])
+                        if cell:
+                            parts.append(cell)
+                stitched_headers.append(" ".join(parts).strip())
+
+            detected_sb = _find_col_index(
+                stitched_headers,
+                [lambda t: "survival" in t, lambda t: "benefit" in t, lambda t: "8" in t],
+            )
+            detected_maturity = _find_col_index(stitched_headers, [lambda t: "maturity" in t, lambda t: "benefit" in t])
+            detected_death = _find_col_index(stitched_headers, [lambda t: "death" in t, lambda t: "benefit" in t])
+            detected_accrual = _find_col_index(stitched_headers, [lambda t: "accrual" in t, lambda t: "survival" in t])
+
+            if detected_sb is not None:
+                sb_col_idx = detected_sb
+            if detected_maturity is not None:
+                maturity_col_idx = detected_maturity
+            if detected_death is not None:
+                death_col_idx = detected_death
+            if detected_accrual is not None:
+                accrual_col_idx = detected_accrual
+
+            # Fallback to known column layout when header detection fails.
+            sb_col_idx = 17 if sb_col_idx is None else sb_col_idx
+            maturity_col_idx = 21 if maturity_col_idx is None else maturity_col_idx
+            death_col_idx = 23 if death_col_idx is None else death_col_idx
+
             rows_with_py = []
             for r in tb:
-                if not r or len(r) < 24:
+                if not r or len(r) < 2:
                     continue
                 py_text = _clean(r[0])
                 if not py_text.isdigit():
@@ -236,27 +341,29 @@ def _parse_schedule_from_tables(parsed: ParsedPDF, policy_term_years: Optional[i
             if not rows_with_py:
                 continue
 
-            header_flat = " ".join(_clean(c) for c in (tb[0] or []) if c)
-            header_mentions_policy = "policy" in header_flat.lower()
-
             for r in rows_with_py:
                 py = int(_clean(r[0]))
                 if policy_term_years is not None and py > policy_term_years:
                     continue
                 if py in aggregated_rows:
                     continue
-                # Column positions based on BI table (0-indexed)
-                income_8 = _to_number(r[17])  # Total Survival Benefit @8% (5+14+15)
-                maturity_8 = _to_number(r[21])  # Total Maturity Benefit @8%
-                death_8 = _to_number(r[23])  # Total Death Benefit @8%
-                accrual_val = _clean(r[19]) if len(r) > 19 else ""
+
+                income_8 = _to_number(r[sb_col_idx]) if sb_col_idx < len(r) else None
+                maturity_8 = _to_number(r[maturity_col_idx]) if maturity_col_idx < len(r) else None
+                death_8 = _to_number(r[death_col_idx]) if death_col_idx < len(r) else None
+
+                accrual_val = ""
+                if accrual_col_idx is not None and accrual_col_idx < len(r):
+                    accrual_val = _clean(r[accrual_col_idx])
+                elif len(r) > 19:
+                    accrual_val = _clean(r[19])
                 if accrual_val and accrual_val not in {"-", "—", ""}:
                     accrual_flag = True
-                # if header missing, still accept as continuation table
+
                 aggregated_rows[py] = {
                     "policy_year": py,
-                    "annual_premium": _to_number(r[2]),
-                    "gi": None,  # not used directly for RPU in this option
+                    "annual_premium": _to_number(r[2]) if len(r) > 2 else None,
+                    "gi": None,
                     "rb_payout_8": None,
                     "cb_8": None,
                     "sb_total_8": income_8,
@@ -344,6 +451,17 @@ class FSPHandler(ProductHandler):
     def calculate(self, extracted: ExtractedFields, ptd: date) -> ComputedOutputs:
         if not _is_flexi_income_option(extracted.plan_option):
             raise ValueError("Flexi-Savings Plan is supported only for the Flexi Income option.")
+
+        isy = _parse_income_start_year(extracted.income_start_point_text)
+        if isy is None:
+            raise ValueError("Income Start Year is required for FSP Flexi Income option.")
+        _validate_income_pattern(
+            extracted.schedule_rows or [],
+            isy=isy,
+            ppt=int(extracted.ppt_years or 0),
+            pt=int(extracted.policy_term_years or 0),
+        )
+
         rcd, rpu_date, grace_days = derive_rcd_and_rpu_dates(
             bi_date=extracted.bi_generation_date,
             ptd=ptd,
