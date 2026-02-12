@@ -3,9 +3,14 @@ from __future__ import annotations
 from typing import Dict, List, Tuple
 from .base import ProductHandler
 from .gis import GISHandler
+from .fsp import FSPHandler
 
 
-_HANDLERS: List[ProductHandler] = [GISHandler()]
+class ProductNotConfigured(Exception):
+    """Raised when the uploaded BI does not match any configured product."""
+
+
+_HANDLERS: List[ProductHandler] = [GISHandler(), FSPHandler()]
 
 
 def detect_product(parsed) -> Tuple[ProductHandler, float, dict]:
@@ -20,4 +25,6 @@ def detect_product(parsed) -> Tuple[ProductHandler, float, dict]:
             best_dbg = dbg
     if best is None:
         raise RuntimeError("No product handlers registered.")
+    if best_conf <= 0:
+        raise ProductNotConfigured("Product not configured yet; RPU calculation is not available.")
     return best, best_conf, best_dbg
